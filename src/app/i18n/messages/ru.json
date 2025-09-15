@@ -1,0 +1,39 @@
+{
+  "nav": {
+    "dashboard": "Главная",
+    "offers": "Офферы",
+    "payouts": "Выплаты",
+    "wallet": "Кошелёк",
+    "settings": "Настройки"
+  },
+  "dashboard": {
+    "title": "Дэшборд",
+    "clicks": "Клики",
+    "registrations": "Регистрации",
+    "revenue": "Доход",
+    "activity_by_hour": "Активность по часам"
+  },
+  "offers": {
+    "available_offers": "Доступные офферы",
+    "active_offers": "Активные офферы",
+    "archived_offers": "Архивные офферы",
+    "open": "Открыть",
+    "no_items": "Нет элементов"
+  },
+  "settings": {
+    "title": "Настройки",
+    "change_password": "Сменить пароль",
+    "save": "Сохранить"
+  },
+  "wallet": {
+    "title": "Кошелёк для выплат",
+    "desc": "Подключите свой кошелёк для выплат здесь."
+  },
+  "register": {
+    "title": "Регистрация",
+    "name": "Имя",
+    "email": "Эл. почта",
+    "password": "Пароль",
+    "submit": "Зарегистрироваться"
+  }
+}

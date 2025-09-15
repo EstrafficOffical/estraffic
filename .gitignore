@@ -1,0 +1,16 @@
+﻿# gitignore
+# deps & build
+node_modules
+.next
+out
+
+# env & local
+.env
+.env.local
+.env.production
+.env.development
+
+# misc
+.DS_Store
+npm-debug.log*
+yarn-debug.log*

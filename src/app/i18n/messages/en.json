@@ -1,0 +1,39 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "offers": "Offers",
+    "payouts": "Payouts",
+    "wallet": "Wallet",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "clicks": "Clicks",
+    "registrations": "Registrations",
+    "revenue": "Revenue",
+    "activity_by_hour": "Activity by hour"
+  },
+  "offers": {
+    "available_offers": "Available offers",
+    "active_offers": "Active offers",
+    "archived_offers": "Archived offers",
+    "open": "Open",
+    "no_items": "No items"
+  },
+  "settings": {
+    "title": "Settings",
+    "change_password": "Change password",
+    "save": "Save"
+  },
+  "wallet": {
+    "title": "Payout wallet",
+    "desc": "Connect your payout wallet here."
+  },
+  "register": {
+    "title": "Register",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Register"
+  }
+}

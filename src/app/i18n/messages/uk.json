@@ -1,0 +1,39 @@
+{
+  "nav": {
+    "dashboard": "Головна",
+    "offers": "Оферти",
+    "payouts": "Виплати",
+    "wallet": "Гаманець",
+    "settings": "Налаштування"
+  },
+  "dashboard": {
+    "title": "Дашборд",
+    "clicks": "Кліки",
+    "registrations": "Реєстрації",
+    "revenue": "Дохід",
+    "activity_by_hour": "Активність за годинами"
+  },
+  "offers": {
+    "available_offers": "Доступні оферти",
+    "active_offers": "Активні оферти",
+    "archived_offers": "Архівні оферти",
+    "open": "Відкрити",
+    "no_items": "Немає елементів"
+  },
+  "settings": {
+    "title": "Налаштування",
+    "change_password": "Змінити пароль",
+    "save": "Зберегти"
+  },
+  "wallet": {
+    "title": "Гаманець для виплат",
+    "desc": "Підключіть свій гаманець для виплат тут."
+  },
+  "register": {
+    "title": "Реєстрація",
+    "name": "Ім'я",
+    "email": "Ел. пошта",
+    "password": "Пароль",
+    "submit": "Зареєструватися"
+  }
+}
