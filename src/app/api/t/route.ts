@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 
 function getClientIp(req: Request): string | undefined {
   const fwd = req.headers.get("x-forwarded-for");

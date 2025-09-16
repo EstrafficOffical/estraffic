@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+
 type ConvType = "REG" | "DEP" | "LEAD" | "SALE" | "REBILL";
 
 export async function GET(req: Request) {

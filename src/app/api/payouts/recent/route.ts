@@ -1,26 +1,32 @@
 import prisma from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
-  // Модель Payout + связь wallet (если иначе — подправим)
-  const rows = (await (prisma as any).payout?.findMany?.({
+  // Берём последние 4 выплаты без лишних include
+  const rows = await prisma.payout.findMany({
     orderBy: { createdAt: "desc" },
     take: 4,
-    include: { wallet: true },
-  })) as any[] | undefined;
+    select: {
+      id: true,
+      createdAt: true,
+      amount: true,
+      currency: true,
+      // если в модели есть поле status — раскомментируй
+      // status: true,
+    },
+  });
 
-  const safe = (rows ?? []).map((r: any) => ({
-    id: r?.id,
-    date: (r?.createdAt instanceof Date
-      ? r.createdAt
-      : new Date(r?.createdAt ?? Date.now())
-    )
-      .toISOString()
-      .slice(0, 10),
-    amount: Number(r?.amount ?? 0),
-    currency: String(r?.currency ?? ""),
-    status: String(r?.status ?? ""),
-    wallet: String(r?.wallet?.provider ?? ""),
+  const safe = rows.map((r) => ({
+    id: r.id,
+    date: r.createdAt.toISOString().slice(0, 10),
+    amount: Number(r.amount),
+    currency: String(r.currency ?? ""),
+    // status: r.status ?? "", // ← если поле существует в схеме Payout
   }));
 
-  return Response.json(safe);
+  return new Response(JSON.stringify({ ok: true, items: safe }), {
+    headers: { "content-type": "application/json" },
+  });
 }
