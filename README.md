@@ -1,4 +1,4 @@
-# Vortex-like Affiliate Hub (Starter)
+# Estrella Traffic
 
 This is a minimal starter implementing:
 - Email/password auth with 110h session
