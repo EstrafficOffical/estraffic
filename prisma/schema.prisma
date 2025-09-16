@@ -3,22 +3,37 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")  // pooled (pooler.supabase.com)
+  directUrl = env("DIRECT_URL")    // direct (db.<ref>.supabase.co)
 }
+
 
 //
 // ─── USERS & AUTH ───────────────────────────────────────────────────────────────
 //
+enum Role {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  BANNED
+}
+
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String      @id @default(cuid())
+  email        String      @unique
   name         String?
-  passwordHash String
+  passwordHash String?     // ← делаем необязательным, чтобы OAuth не падал
   image        String?
-  role         Role     @default(USER)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  telegram     String?     // ← добавили поле Telegram
+  role         Role        @default(USER)
+  status       UserStatus  @default(PENDING) // ← модерация регистрации
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   // relations
   sessions      Session[]
@@ -29,11 +44,6 @@ model User {
   payouts       Payout[]
   offerAccesses OfferAccess[]
   offerRequests OfferRequest[]
-}
-
-enum Role {
-  USER
-  ADMIN
 }
 
 model Account {
@@ -95,7 +105,7 @@ model Offer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // back-relations (важно! иначе Prisma ругается, как у тебя в скринах)
+  // back-relations
   accesses    OfferAccess[]
   requests    OfferRequest[]
   clicks      Click[]
