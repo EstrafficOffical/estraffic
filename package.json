@@ -13,7 +13,7 @@
     "db:push": "prisma db push",
     "seed": "ts-node --transpile-only prisma/seed.ts",
     "db:reset": "prisma migrate reset --force && prisma generate && ts-node --transpile-only prisma/seed.ts"
-},
+  },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
     "@prisma/client": "^6.15.0",
@@ -41,6 +41,7 @@
     "@types/react": "^18.3.24",
     "@types/react-dom": "^18.3.7",
     "eslint": "8.57.0",
+    "eslint-config-next": "^14.2.4",
     "prisma": "^6.15.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
@@ -48,6 +49,4 @@
   "prisma": {
     "seed": "ts-node --transpile-only prisma/seed.ts"
   }
-
 }
-
