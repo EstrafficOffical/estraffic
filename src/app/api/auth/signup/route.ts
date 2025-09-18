@@ -5,9 +5,12 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { email, password, name } = await req.json();
+    const { email, password, name, telegram } = await req.json();
     if (!email || !password) {
-      return NextResponse.json({ ok: false, error: "Email and password are required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Email and password are required" },
+        { status: 400 }
+      );
     }
 
     const normalized = String(email).toLowerCase().trim();
@@ -24,13 +27,19 @@ export async function POST(req: Request) {
       data: {
         email: normalized,
         name: name ?? null,
+        telegram: telegram ?? null,
         passwordHash,
         role: "USER",
+        status: "PENDING", // ← на модерацию
       },
-      select: { id: true, email: true, name: true },
+      select: { id: true, email: true, name: true, status: true },
     });
 
-    return NextResponse.json({ ok: true, user });
+    return NextResponse.json({
+      ok: true,
+      user,
+      message: "Registration submitted. Wait for approval.",
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });

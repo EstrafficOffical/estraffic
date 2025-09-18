@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import AuthButton from "@/app/components/AuthButton"; // ← кнопка Войти/Выйти
 
 type NavItem = { label: string; href: string; subtle?: boolean };
 
@@ -35,11 +36,12 @@ export default function NavDrawer({
 
   const items: NavItem[] = [
     { label: "Дашборд", href: `${base}` },
-    { label: "Статистика", href: `${base}/stats` },       
+    { label: "Статистика", href: `${base}/stats` },
     { label: "Профиль", href: `${base}/profile` },
     { label: "Офферы", href: `${base}/offers` },
+    { label: "Мои офферы", href: `${base}/offers/mine` }, // ← личные офферы
     { label: "Финансы", href: `${base}/finance` },
-    { label: "Новый оффер", href: `${base}/admin/offers/new`, subtle: true },
+    { label: "Новый оффер", href: `${base}/admin/offers/new`, subtle: true }, // только ADMIN (middleware)
     { label: "Постбеки", href: `${base}/postback`, subtle: true },
     { label: "Конверсии", href: `${base}/conversions` },
   ];
@@ -71,7 +73,7 @@ export default function NavDrawer({
           </button>
         </div>
 
-        <div className="px-2 py-2 space-y-1 overflow-y-auto h-[calc(100%-120px)]">
+        <div className="px-2 py-2 space-y-1 overflow-y-auto h-[calc(100%-140px)]">
           {items.map((it, idx) => (
             <Link
               key={it.href}
@@ -88,8 +90,9 @@ export default function NavDrawer({
           ))}
         </div>
 
-        <div className="px-4 py-3 text-xs text-white/40 border-t border-white/10">
-          © {new Date().getFullYear()} Estrella • v0.1
+        <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between">
+          <span className="text-xs text-white/40">© {new Date().getFullYear()} Estrella • v0.1</span>
+          <AuthButton /> {/* ← «Войти / Выйти» */}
         </div>
       </aside>
     </div>
