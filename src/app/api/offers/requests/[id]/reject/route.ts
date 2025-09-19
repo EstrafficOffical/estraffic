@@ -13,9 +13,9 @@ export async function POST(
   const id = params.id;
 
   await prisma.offerRequest.update({
-    where: { id },
-    data: { status: "REJECTED" },
-  });
+  where: { id },
+  data: { status: "REJECTED", processedAt: new Date() },
+});
 
   // доступ (OfferAccess) не даём
   return NextResponse.json({ ok: true });

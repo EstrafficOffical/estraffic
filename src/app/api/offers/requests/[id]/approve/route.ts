@@ -13,10 +13,11 @@ export async function POST(
   const id = params.id;
 
   const reqRow = await prisma.offerRequest.update({
-    where: { id },
-    data: { status: "APPROVED" },
-    select: { id: true, userId: true, offerId: true },
-  });
+  where: { id },
+  data: { status: "APPROVED", processedAt: new Date() },
+  select: { id: true, userId: true, offerId: true },
+});
+
 
   await prisma.offerAccess.upsert({
     where: { userId_offerId: { userId: reqRow.userId, offerId: reqRow.offerId } },
