@@ -3,19 +3,25 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-export async function POST(_: Request, { params }: { params: { id: string }}) {
+export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
-  if ((session?.user as any)?.role !== "ADMIN") return NextResponse.json({ ok: false }, { status: 403 });
+  const role = (session?.user as any)?.role;
+  if (role !== "ADMIN") {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
 
-  const req = await prisma.offerRequest.update({
+  // 1) апрувим запрос
+  const reqRow = await prisma.offerRequest.update({
     where: { id: params.id },
-    data: { status: "APPROVED", processedAt: new Date() },
+    data: { status: "APPROVED" }, // processedAt убрали, т.к. его нет в схеме
+    select: { userId: true, offerId: true },
   });
 
-  await prisma.userOffer.upsert({
-    where: { userId_offerId: { userId: req.userId, offerId: req.offerId }},
-    create: { userId: req.userId, offerId: req.offerId },
-    update: {},
+  // 2) выдаём доступ к офферу
+  await prisma.offerAccess.upsert({
+    where: { userId_offerId: { userId: reqRow.userId, offerId: reqRow.offerId } },
+    create: { userId: reqRow.userId, offerId: reqRow.offerId, approved: true },
+    update: { approved: true },
   });
 
   return NextResponse.json({ ok: true });

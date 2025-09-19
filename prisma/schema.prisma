@@ -150,6 +150,7 @@ model OfferRequest {
   message   String?
   status    RequestStatus @default(PENDING)
   createdAt DateTime      @default(now())
+  processedAt DateTime?
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)

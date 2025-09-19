@@ -14,14 +14,13 @@ export async function POST(req: Request) {
     }
 
     const normalized = String(email).toLowerCase().trim();
-
     const exists = await prisma.user.findUnique({ where: { email: normalized } });
     if (exists) {
       return NextResponse.json({ ok: false, error: "User already exists" }, { status: 409 });
     }
 
-    const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? "12");
-    const passwordHash = await bcrypt.hash(password, saltRounds);
+    const rounds = Number.parseInt(String(process.env.BCRYPT_SALT_ROUNDS ?? 12), 10);
+    const passwordHash = await bcrypt.hash(password, Number.isFinite(rounds) ? rounds : 12);
 
     const user = await prisma.user.create({
       data: {
@@ -30,16 +29,15 @@ export async function POST(req: Request) {
         telegram: telegram ?? null,
         passwordHash,
         role: "USER",
-        status: "PENDING", // ← на модерацию
+        status: "PENDING",
       },
       select: { id: true, email: true, name: true, status: true },
     });
 
-    return NextResponse.json({
-      ok: true,
-      user,
-      message: "Registration submitted. Wait for approval.",
-    });
+    return NextResponse.json(
+      { ok: true, user, message: "Registration submitted. Wait for approval." },
+      { status: 201 }
+    );
   } catch (e) {
     console.error(e);
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });

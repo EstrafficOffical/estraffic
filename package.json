@@ -13,7 +13,8 @@
     "prisma:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "seed": "ts-node --transpile-only prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force && prisma generate && ts-node --transpile-only prisma/seed.ts"
+    "db:reset": "prisma migrate reset --force && prisma generate && ts-node --transpile-only prisma/seed.ts",
+    "studio:direct": "powershell -Command \"$env:DATABASE_URL=$env:DIRECT_URL; npx prisma studio\""
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
