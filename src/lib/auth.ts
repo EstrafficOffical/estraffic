@@ -8,19 +8,22 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import prisma from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
+const isProd = process.env.NODE_ENV === "production";
+
 const providers: NextAuthOptions["providers"] = [];
 
+// --- Google OAuth (склейка email только вне продакшена)
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   providers.push(
     GoogleProvider({
-  clientId: process.env.GOOGLE_CLIENT_ID!,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-  allowDangerousEmailAccountLinking: process.env.NODE_ENV !== "production",
-})
-
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: !isProd,
+    })
   );
 }
 
+// --- Apple OAuth (по желанию)
 if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET) {
   providers.push(
     AppleProvider({
@@ -30,8 +33,7 @@ if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET) {
   );
 }
 
-// === Credentials: разрешаем вход независимо от статуса (PENDING тоже можно)
-// Гейт по статусу будем делать на страницах/в API, если понадобится.
+// --- Credentials (email+password)
 providers.push(
   CredentialsProvider({
     name: "Credentials",
@@ -50,7 +52,11 @@ providers.push(
       const ok = await bcrypt.compare(password, user.passwordHash);
       if (!ok) return null;
 
-      // ⚠️ НЕ блокируем PENDING
+      // PROD: впускаем только APPROVED. DEV: впускаем всех, статус проверяем на страницах/(API).
+      if (isProd && user.status !== "APPROVED") {
+        throw new Error("Account pending approval");
+      }
+
       return {
         id: user.id,
         email: user.email,
@@ -66,11 +72,16 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
   session: { strategy: "jwt" },
   providers,
-  // Разрешаем вход всем (OAuth тоже). Статус используем уже в UI/API.
   callbacks: {
-    async signIn() {
+    // OAuth: на проде блокируем не-APPROVED. В dev разрешаем, чтобы тестировать гейты.
+    async signIn({ user }) {
+      const email = user?.email;
+      if (!email) return false;
+      const dbUser = await prisma.user.findUnique({ where: { email } });
+      if (isProd && dbUser && dbUser.status !== "APPROVED") return false;
       return true;
     },
+
     async jwt({ token, user }) {
       if (user) {
         token.id = (user as any).id;
@@ -86,6 +97,7 @@ export const authOptions: NextAuthOptions = {
       }
       return token;
     },
+
     async session({ session, token }) {
       if (session.user) {
         (session.user as any).id = token.id;
@@ -95,7 +107,7 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  debug: process.env.NODE_ENV !== "production",
+  debug: !isProd,
 };
 
 // Удобный хелпер для серверных компонентов / API
