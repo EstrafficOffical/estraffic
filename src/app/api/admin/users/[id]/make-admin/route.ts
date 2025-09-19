@@ -1,4 +1,4 @@
-// src/app/api/admin/users/[id]/approve/route.ts
+// src/app/api/admin/users/[id]/make-admin/route.ts
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdmin } from "@/lib/api-guards";
@@ -12,7 +12,7 @@ export async function POST(
 
   await prisma.user.update({
     where: { id: params.id },
-    data: { status: "APPROVED" },
+    data: { role: "ADMIN" },
   });
 
   return NextResponse.json({ ok: true });
