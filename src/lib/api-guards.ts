@@ -13,6 +13,24 @@ export async function requireAuth() {
   return { session, res: null as any };
 }
 
+export async function requireApproved() {
+  const session = await auth();
+  const status = (session?.user as any)?.status;
+  if (!session?.user) {
+    return {
+      session: null as any,
+      res: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+  if (status !== "APPROVED") {
+    return {
+      session,
+      res: NextResponse.json({ error: "Account not approved" }, { status: 403 }),
+    };
+  }
+  return { session, res: null as any };
+}
+
 export async function requireAdmin() {
   const session = await auth();
   const role = (session?.user as any)?.role;
