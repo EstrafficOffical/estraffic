@@ -1,102 +1,87 @@
 // src/app/api/postbacks/ingest/route.ts
-import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import type { ConversionType } from "@prisma/client";
+import prisma from "@/lib/prisma";
+import { ipFromRequest, rateLimit } from "@/lib/rate-limit";
+import { postbackSchema } from "@/lib/validation";
 
-// Безопасный геттер параметров
-function pick(params: URLSearchParams, key: string) {
-  const v = params.get(key);
-  return v == null || v === "" ? undefined : v;
-}
-
-// Пробуем восстановить offerId и userId по click_id из таблицы кликов
-async function guessFromClick(clickId?: string) {
-  if (!clickId) {
-    return { offerId: null as string | null, userId: null as string | null };
+/** объединяем query + body */
+async function readPayload(req: Request) {
+  const url = new URL(req.url);
+  const query = Object.fromEntries(url.searchParams);
+  const ct = req.headers.get("content-type") || "";
+  let body: any = {};
+  if (req.method === "POST") {
+    if (ct.includes("application/json")) {
+      body = await req.json().catch(() => ({}));
+    } else if (ct.includes("application/x-www-form-urlencoded")) {
+      const form = await req.formData().catch(() => null);
+      if (form) {
+        body = {};
+        for (const [k, v] of form.entries()) body[k] = String(v);
+      }
+    }
   }
-  const click = await prisma.click.findFirst({
-    where: { clickId },
-    select: { offerId: true, userId: true },
-  });
-  return { offerId: click?.offerId ?? null, userId: click?.userId ?? null };
+  return { ...query, ...body };
 }
-
-export async function GET(req: Request) { return handle(req); }
-export async function POST(req: Request) { return handle(req); }
 
 async function handle(req: Request) {
-  const url = new URL(req.url);
-  const isGet = req.method === "GET";
-  const params = new URLSearchParams(isGet ? url.search : "");
+  // rate limit: 60/мин по IP
+  const ip = ipFromRequest(req);
+  const rl = rateLimit(`pb:${ip}`, 60, 60_000);
+  if (!rl.ok) return NextResponse.json({ ok: false, error: "Too Many Requests" }, { status: 429 });
 
-  // Если POST — поддерживаем JSON и x-www-form-urlencoded; иначе fallback к query
-  if (!isGet) {
-    const ct = req.headers.get("content-type") || "";
-    if (ct.includes("application/json")) {
-      const body = await req.json().catch(() => ({}));
-      Object.entries(body || {}).forEach(([k, v]) => params.set(k, String(v)));
-    } else if (ct.includes("application/x-www-form-urlencoded")) {
-      const body = await req.text();
-      new URLSearchParams(body).forEach((v, k) => params.set(k, v));
-    } else {
-      url.searchParams.forEach((v, k) => params.set(k, v));
-    }
+  const raw = await readPayload(req);
+  const parsed = postbackSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, error: "Bad request", issues: parsed.error.flatten() }, { status: 400 });
+  }
+  const data = parsed.data;
+
+  // секрет (если задан)
+  const secret = process.env.POSTBACK_SHARED_SECRET?.trim();
+  if (secret && data.secret !== secret) {
+    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
 
-  const clickId   = pick(params, "click_id") ?? pick(params, "subid") ?? pick(params, "sub1");
-  const offerIdRaw = pick(params, "offer_id");
-  const amount    = pick(params, "amount");
-  const currency  = pick(params, "currency") ?? "USD";
-  const txId      = pick(params, "tx_id");
-  const rawStatus = (pick(params, "event") ?? pick(params, "status") ?? "REG").toUpperCase();
+  // оффер
+  const offer = await prisma.offer.findUnique({ where: { id: data.offer_id }, select: { id: true } });
+  if (!offer) return NextResponse.json({ ok: false, error: "Offer not found" }, { status: 404 });
 
-  // Приводим статус к вашему enum ConversionType
-  const allowed = new Set<ConversionType>(["REG", "DEP", "REBILL", "SALE", "LEAD"] as any);
-  const status  = (allowed.has(rawStatus as any) ? rawStatus : "REG") as ConversionType;
-
-  // Пробуем дотянуть offerId/userId по click_id, если offer_id не пришёл
-  const { offerId: guessedOfferId, userId: guessedUserId } = await guessFromClick(clickId);
-  const effectiveOfferId = offerIdRaw ?? guessedOfferId;
-
-  if (!effectiveOfferId) {
-    return NextResponse.json(
-      { ok: false, error: "Missing offer_id and unable to resolve from click_id" },
-      { status: 400 }
-    );
-  }
-
-  // Проверим, что оффер существует (иначе 400)
-  const offer = await prisma.offer.findUnique({ where: { id: effectiveOfferId } });
-  if (!offer) {
-    return NextResponse.json(
-      { ok: false, error: `Unknown offer_id: ${effectiveOfferId}` },
-      { status: 400 }
-    );
-  }
-
-  // Мягкая дедупликация: если пришёл tx_id и уже есть такая запись — вернём существующий id
-  if (txId) {
-    const existed = await prisma.conversion.findFirst({
-      where: { offerId: offer.id, txId },
-      select: { id: true },
+  // идемпотентно по (offerId, txId)
+  try {
+    const conv = await prisma.conversion.upsert({
+      where: { offerId_txId: { offerId: offer.id, txId: data.tx_id } } as any,
+      update: {
+        type: data.event,
+        amount: data.amount ?? undefined,
+        currency: data.currency ?? undefined,
+        clickId: data.click_id ?? undefined,
+        sub1: data.sub1 ?? undefined,
+        sub2: data.sub2 ?? undefined,
+        sub3: data.sub3 ?? undefined,
+        sub4: data.sub4 ?? undefined,
+        sub5: data.sub5 ?? undefined,
+      } as any,
+      create: {
+        offerId: offer.id,
+        txId: data.tx_id,
+        type: data.event,
+        amount: data.amount ?? null,
+        currency: data.currency ?? null,
+        clickId: data.click_id ?? null,
+        sub1: data.sub1 ?? null,
+        sub2: data.sub2 ?? null,
+        sub3: data.sub3 ?? null,
+        sub4: data.sub4 ?? null,
+        sub5: data.sub5 ?? null,
+      } as any,
     });
-    if (existed) {
-      return NextResponse.json({ ok: true, id: existed.id, dedup: true });
-    }
+    return NextResponse.json({ ok: true, id: conv.id });
+  } catch (e) {
+    console.error("postback upsert error", e);
+    return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
   }
-
-  // Создаём конверсию
-  const conv = await prisma.conversion.create({
-    data: {
-      userId: guessedUserId,           // подтянули из клика (если было)
-      offerId: offer.id,               // гарантированно валиден
-      subId: clickId ?? null,          // обычно сюда кладут click_id/subid
-      type: status,                    // REG/DEP/SALE/LEAD/REBILL
-      amount: amount ? Number(amount) : null,
-      currency,
-      txId: txId ?? null,
-    },
-  });
-
-  return NextResponse.json({ ok: true, id: conv.id });
 }
+
+export const GET = handle;
+export const POST = handle;
