@@ -1,10 +1,9 @@
-// src/app/api/postbacks/conversions/route.ts
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-guards";
+import { requireApproved } from "@/lib/api-guards";
 
 export async function GET() {
-  const { session, res } = await requireAuth();
+  const { session, res } = await requireApproved();
   if (res) return res;
 
   const userId = (session!.user as any).id as string;
