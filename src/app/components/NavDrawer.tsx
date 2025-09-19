@@ -61,6 +61,7 @@ export default function NavDrawer({
     // Админка
     if (isAdmin) {
       list.push({ label: "Заявки на офферы", href: `${base}/admin/requests`, subtle: true });
+      list.push({ label: "Пользователи", href: `${base}/admin/users`, subtle: true });
       list.push({ label: "Новый оффер", href: `${base}/admin/offers/new`, subtle: true });
     }
 
