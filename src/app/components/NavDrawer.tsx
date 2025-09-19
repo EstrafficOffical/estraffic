@@ -47,9 +47,10 @@ export default function NavDrawer({
       { label: "Профиль", href: `${base}/profile` },
     ];
 
-    // Приватные разделы — только после одобрения
+    // Приватные разделы — показываем только APPROVED (или ADMIN)
     if (isApproved || isAdmin) {
       list.push(
+        { label: "Статистика", href: `${base}/stats` },     // ← ВЕРНУЛИ
         { label: "Офферы", href: `${base}/offers` },
         { label: "Мои офферы", href: `${base}/offers/mine` },
         { label: "Финансы", href: `${base}/finance` },
@@ -60,9 +61,11 @@ export default function NavDrawer({
 
     // Админка
     if (isAdmin) {
-      list.push({ label: "Заявки на офферы", href: `${base}/admin/requests`, subtle: true });
-      list.push({ label: "Пользователи", href: `${base}/admin/users`, subtle: true });
-      list.push({ label: "Новый оффер", href: `${base}/admin/offers/new`, subtle: true });
+      list.push(
+        { label: "Заявки на офферы", href: `${base}/admin/requests`, subtle: true },
+        { label: "Пользователи", href: `${base}/admin/users`, subtle: true },
+        { label: "Новый оффер", href: `${base}/admin/offers/new`, subtle: true },
+      );
     }
 
     return list;
