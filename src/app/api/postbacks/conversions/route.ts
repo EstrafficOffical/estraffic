@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/api-guards";
 export async function GET() {
   const { session, res } = await requireAuth();
   if (res) return res;
+
   const userId = (session!.user as any).id as string;
 
   const rows = await prisma.conversion.findMany({
@@ -15,7 +16,7 @@ export async function GET() {
     include: { offer: { select: { title: true } } },
   });
 
-  const safe = rows.map((r) => ({
+  const items = rows.map((r) => ({
     id: r.id,
     offerTitle: r.offer?.title ?? "",
     amount: r.amount != null ? Number(r.amount) : 0,
@@ -25,5 +26,5 @@ export async function GET() {
     createdAt: r.createdAt,
   }));
 
-  return NextResponse.json({ items: safe });
+  return NextResponse.json({ items });
 }

@@ -13,12 +13,12 @@ export async function POST(
   const userId = (session!.user as any).id as string;
   const offerId = params.id;
 
-  // создаём или обновляем запрос
-  const reqRow = await prisma.offerRequest.upsert({
+  // создаём/сбрасываем заявку в PENDING
+  const request = await prisma.offerRequest.upsert({
     where: { userId_offerId: { userId, offerId } },
     update: { status: "PENDING" },
     create: { userId, offerId, status: "PENDING" },
   });
 
-  return NextResponse.json({ ok: true, request: reqRow });
+  return NextResponse.json({ ok: true, request });
 }
