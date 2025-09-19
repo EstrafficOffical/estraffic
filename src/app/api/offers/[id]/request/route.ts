@@ -1,26 +1,24 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+// src/app/api/offers/[id]/request/route.ts
 import prisma from "@/lib/prisma";
+import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api-guards";
 
-export async function POST(_: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  const userId = (session?.user as any)?.id as string | undefined;
-  if (!userId) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  }
+export async function POST(
+  _req: Request,
+  { params }: { params: { id: string } }
+) {
+  const { session, res } = await requireAuth();
+  if (res) return res;
 
-  const offer = await prisma.offer.findUnique({ where: { id: params.id } });
-  if (!offer) {
-    return NextResponse.json({ ok: false, error: "offer_not_found" }, { status: 404 });
-  }
+  const userId = (session!.user as any).id as string;
+  const offerId = params.id;
 
-  await prisma.offerRequest.upsert({
-    where: { userId_offerId: { userId, offerId: offer.id } },
-    // можно не указывать status: он по умолчанию PENDING
-    create: { userId, offerId: offer.id, status: "PENDING" },
+  // создаём или обновляем запрос
+  const reqRow = await prisma.offerRequest.upsert({
+    where: { userId_offerId: { userId, offerId } },
     update: { status: "PENDING" },
+    create: { userId, offerId, status: "PENDING" },
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, request: reqRow });
 }
