@@ -1,5 +1,4 @@
-// app/[locale]/(auth)/layout.tsx
-import { auth } from "@/lib/auth"; // экспортируй из lib/auth.ts helper: export const auth = () => getServerSession(authOptions)
+﻿import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
 export default async function AuthLayout({
@@ -10,11 +9,8 @@ export default async function AuthLayout({
   params: { locale: string };
 }) {
   const session = await auth();
-
-  // Не залогинен → на главную с модалкой логина (или /{locale}/login — как у тебя принято)
   if (!session?.user) {
-    redirect(`/${locale}?auth=login`);
+    redirect(`/api/auth/signin?callbackUrl=/${locale}`);
   }
-
   return <>{children}</>;
 }
