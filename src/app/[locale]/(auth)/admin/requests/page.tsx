@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Actions from "./row-actions";
+import HeaderClient from "./HeaderClient";
 
 type SearchParams = { status?: string; q?: string; page?: string; perPage?: string };
 
@@ -47,7 +48,7 @@ export default async function Page({
       take: perPage,
       include: {
         user: { select: { id: true, email: true, name: true } },
-        offer: { select: { id: true, title: true, tag: true } },
+        offer: { select: { id: true, title: true, tag: true} },
       },
     }),
   ]);
@@ -55,9 +56,11 @@ export default async function Page({
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   return (
-    <div className="p-4 space-y-4 text-white">
-      <h1 className="text-xl font-semibold">Заявки на офферы</h1>
+    <section className="relative p-4 space-y-4 text-white">
+      {/* Клиентская шапка с кнопкой «Меню» и NavDrawer */}
+      <HeaderClient title="Заявки на офферы" />
 
+      {/* Фильтры */}
       <form className="flex gap-2">
         <input
           name="q"
@@ -80,6 +83,7 @@ export default async function Page({
         </button>
       </form>
 
+      {/* Таблица */}
       <div className="rounded-xl border border-white/10 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-white/5">
@@ -120,11 +124,12 @@ export default async function Page({
         </table>
       </div>
 
+      {/* Пагинация (информер) */}
       <div className="flex items-center gap-2">
         <span className="text-white/60 text-sm">
           Стр. {page} из {totalPages} • всего {total}
         </span>
       </div>
-    </div>
+    </section>
   );
 }
