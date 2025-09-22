@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export const clickQuerySchema = z.object({
   offer_id: z.string().min(1, "offer_id required"),
+  aid: z.string().optional(),                 // <- добавили (affiliate user id)
   click_id: z.string().max(128).optional(),
   sub1: z.string().max(128).optional(),
   sub2: z.string().max(128).optional(),

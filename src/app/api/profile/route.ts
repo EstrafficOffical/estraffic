@@ -1,36 +1,51 @@
 // src/app/api/profile/route.ts
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { requireAuth } from "@/lib/api-guards";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
+const PatchSchema = z.object({
+  name: z.string().trim().max(120).optional(),
+  telegram: z.string().trim().max(120).optional(),
+  email: z.string().trim().email().optional(), // у тебя readOnly, но пусть валидируется
+});
+
+export async function GET() {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  }
+  const id = (session.user as any).id as string;
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, email: true, name: true, telegram: true, image: true },
+  });
+  return NextResponse.json({ user });
+}
 
 export async function PATCH(req: Request) {
-  const { session, res } = await requireAuth();
-  if (res) return res;
-
-  const userId = (session!.user as any).id as string;
-
-  const body = await req.json().catch(() => ({} as any));
-  const nameRaw = (body?.name ?? "") as string;
-  const tgRaw = (body?.telegram ?? "") as string;
-
-  const name = nameRaw.trim();
-  const telegram = tgRaw.trim().replace(/^@/, ""); // храним без @
-
-  if (name && (name.length < 1 || name.length > 80)) {
-    return NextResponse.json({ error: "Имя должно быть 1–80 символов" }, { status: 400 });
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
-  if (telegram && telegram.length > 64) {
-    return NextResponse.json({ error: "Telegram слишком длинный" }, { status: 400 });
+  const id = (session.user as any).id as string;
+
+  const body = await req.json().catch(() => ({}));
+  const parsed = PatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "VALIDATION" }, { status: 400 });
   }
 
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: {
-      ...(name !== "" ? { name } : { name: null }),
-      ...(tgRaw !== "" ? { telegram } : { telegram: null }),
-    },
-    select: { id: true, name: true, telegram: true },
-  });
+  const data: any = {};
+  if (parsed.data.name !== undefined) data.name = parsed.data.name || null;
+  if (parsed.data.telegram !== undefined) data.telegram = parsed.data.telegram || null;
+  if (parsed.data.email !== undefined) data.email = parsed.data.email || null;
 
-  return NextResponse.json({ ok: true, user });
+  try {
+    const user = await prisma.user.update({ where: { id }, data, select: { id: true } });
+    return NextResponse.json({ ok: true, id: user.id });
+  } catch (e: any) {
+    // возможный уникальный email и т.п.
+    return NextResponse.json({ error: e?.code || "DB_ERROR" }, { status: 400 });
+  }
 }

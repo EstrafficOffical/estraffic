@@ -1,125 +1,198 @@
+// src/app/components/NavDrawer.tsx
 "use client";
 
-import { useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import AuthButton from "@/app/components/AuthButton";
-import { useSession } from "next-auth/react";
 
-type NavItem = { label: string; href: string; subtle?: boolean };
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  locale?: string;
+  // опционально — если хочешь пробрасывать извне
+  isAdmin?: boolean;
+  userEmail?: string;
+  userBadge?: string;
+};
+
+type SessionPayload = {
+  user?: {
+    email?: string | null;
+    name?: string | null;
+    image?: string | null;
+    // если в next-auth callbacks ты добавляешь роль/статус — они приедут сюда
+    role?: string | null;
+    status?: string | null;
+  } | null;
+};
 
 export default function NavDrawer({
   open,
   onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const { data: session } = useSession();
-  const role = (session?.user as any)?.role as string | undefined;
-  const status = (session?.user as any)?.status as string | undefined;
-  const isAdmin = role === "ADMIN";
-  const isApproved = status === "APPROVED";
-
-  const firstLinkRef = useRef<HTMLAnchorElement | null>(null);
+  locale,
+  isAdmin: isAdminProp,
+  userEmail: userEmailProp,
+  userBadge: userBadgeProp,
+}: Props) {
   const pathname = usePathname();
-  const locale = (pathname?.split("/")?.[1] || "ru") as string;
-  const base = `/${locale}`;
+  const detectedLocale = useMemo(
+    () => (locale ?? pathname?.split("/")?.[1] ?? "ru"),
+    [locale, pathname]
+  );
+
+  // локальное состояние авторизации (достанем из /api/auth/session)
+  const [email, setEmail] = useState<string | undefined>(userEmailProp);
+  const [role, setRole] = useState<string | undefined>(undefined);
+  const [statusFlag, setStatusFlag] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    if (open) {
-      document.addEventListener("keydown", onKey);
-      document.body.style.overflow = "hidden";
-      setTimeout(() => firstLinkRef.current?.focus(), 0);
-    } else {
-      document.body.style.overflow = "";
-    }
+    if (userEmailProp) return; // уже пробросили с сервера
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/auth/session");
+        if (!r.ok) return;
+        const data = (await r.json()) as SessionPayload;
+        if (cancelled) return;
+        setEmail(data?.user?.email ?? undefined);
+        setRole((data?.user as any)?.role ?? undefined);
+        setStatusFlag((data?.user as any)?.status ?? undefined);
+      } catch {
+        /* ignore */
+      }
+    })();
     return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      cancelled = true;
     };
-  }, [open, onClose]);
+  }, [userEmailProp]);
 
-  const items = useMemo<NavItem[]>(() => {
-    const list: NavItem[] = [
-      { label: "Главная", href: `${base}` },
-      { label: "Профиль", href: `${base}/profile` },
-    ];
+  const authed = !!email;
+  const isAdmin = isAdminProp ?? role === "ADMIN";
+  const badge =
+    userBadgeProp ??
+    ([role, statusFlag].filter(Boolean).join(" · ") || undefined);
 
-    // Приватные разделы — показываем только APPROVED (или ADMIN)
-    if (isApproved || isAdmin) {
-      list.push(
-        { label: "Статистика", href: `${base}/stats` },     // ← ВЕРНУЛИ
-        { label: "Офферы", href: `${base}/offers` },
-        { label: "Мои офферы", href: `${base}/offers/mine` },
-        { label: "Финансы", href: `${base}/finance` },
-        { label: "Постбеки", href: `${base}/postbacks` },
-        { label: "Конверсии", href: `${base}/conversions` },
-      );
-    }
-
-    // Админка
-    if (isAdmin) {
-      list.push(
-        { label: "Заявки на офферы", href: `${base}/admin/requests`, subtle: true },
-        { label: "Пользователи", href: `${base}/admin/users`, subtle: true },
-        { label: "Новый оффер", href: `${base}/admin/offers/new`, subtle: true },
-      );
-    }
-
-    return list;
-  }, [base, isApproved, isAdmin]);
+  // утилита active-ссылки
+  const A = (href: string, label: string) => {
+    const active = pathname?.startsWith(`/${detectedLocale}${href === "/" ? "" : href}`);
+    return (
+      <Link
+        href={`/${detectedLocale}${href}`}
+        onClick={onClose}
+        className={`block w-full rounded-xl px-4 py-2 text-[15px] leading-6 transition
+          ${active ? "bg-white/10 text-white" : "text-white/90 hover:bg-white/10"}`}
+      >
+        {label}
+      </Link>
+    );
+  };
 
   return (
-    <div aria-hidden={!open} className={`fixed inset-0 z-50 ${open ? "" : "pointer-events-none"}`} role="dialog" aria-modal="true">
-      <div onClick={onClose} className={`absolute inset-0 transition-opacity duration-200 ${open ? "bg-black/50 opacity-100" : "opacity-0"}`} />
+    <>
+      {/* overlay */}
+      <div
+        aria-hidden
+        className={`fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm transition-opacity
+          ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        onClick={onClose}
+      />
+
+      {/* панель */}
       <aside
-        className={`absolute left-0 top-0 h-full w-80 max-w-[90vw]
-                    bg-zinc-950/90 backdrop-blur-xl border-r border-white/10
-                    transition-transform duration-300 ease-out
-                    ${open ? "translate-x-0" : "-translate-x-full"}`}
+        role="dialog"
+        aria-label="Навигация"
+        className={`fixed left-0 top-0 z-[61] h-full w-[360px] max-w-[85vw]
+          border-r border-white/10 bg-zinc-950/95 text-white
+          transition-transform duration-300
+          ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex items-center justify-between px-4 py-4">
+        {/* шапка */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
           <div className="flex items-center gap-2">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-xl bg-white/20">
-              <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden>
-                <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
-              </svg>
-            </span>
-            <span className="font-semibold">Навигация</span>
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-white/15">★</span>
+            <span className="text-[15px] font-semibold text-white">Навигация</span>
           </div>
           <button
             onClick={onClose}
-            className="rounded-xl border border-white/20 px-2 py-1 text-sm text-white/80 hover:bg-white/10"
-            aria-label="Закрыть меню"
+            className="rounded-lg border border-white/20 px-2 py-1 text-sm text-white/80 hover:bg-white/10"
+            aria-label="Закрыть (Esc)"
+            title="Закрыть (Esc)"
           >
             Esc
           </button>
         </div>
 
-        <div className="px-2 py-2 space-y-1 overflow-y-auto h-[calc(100%-140px)]">
-          {items.map((it, idx) => (
-            <Link
-              key={it.href}
-              href={it.href}
-              ref={idx === 0 ? firstLinkRef : undefined}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2 outline-none
-                          hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/20
-                          ${it.subtle ? "text-white/60 hover:text-white/90" : "text-white/90"}`}
-              onClick={onClose}
-            >
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/70" />
-              <span>{it.label}</span>
-            </Link>
-          ))}
+        <div className="h-[calc(100%-106px)] overflow-y-auto px-3 py-3">
+          <nav className="space-y-1">
+            {/* Всегда доступна "Главная" */}
+            <div className="list-none space-y-1">
+              {A("/", "Главная")}
+            </div>
+
+            {/* Остальные пункты — только если залогинен */}
+            {authed && (
+              <div className="mt-2 list-none space-y-1">
+                {A("/profile", "Профиль")}
+                {A("/stats", "Статистика")}
+                {A("/offers", "Офферы")}
+                {A("/offers/mine", "Мои офферы")}
+                {A("/finance", "Финансы")}
+                {A("/postback", "Постбеки")}
+                {A("/conversions", "Конверсии")}
+              </div>
+            )}
+
+            {/* Админ-раздел */}
+            {authed && isAdmin && (
+              <>
+                <div className="mt-3 select-none px-2 text-xs uppercase tracking-wide text-white/40">
+                  Администрирование
+                </div>
+                <div className="list-none space-y-1">
+                  {A("/admin/offers/create", "Создать оффер")}
+                  {A("/admin/requests", "Заявки на офферы")}
+                  {A("/admin/users", "Пользователи")}
+                </div>
+              </>
+            )}
+          </nav>
+
+          <div className="h-24" />
         </div>
 
-        <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between">
-          <span className="text-xs text-white/40">© {new Date().getFullYear()} Estrella • v0.1</span>
-          <AuthButton />
+        {/* футер */}
+        <div className="sticky bottom-0 w-full border-t border-white/10 bg-zinc-950/95 px-4 py-3">
+          {!authed ? (
+            <Link
+              href={`/api/auth/signin?callbackUrl=/${detectedLocale}`}
+              onClick={onClose}
+              className="block w-full truncate text-left text-[13px] text-white/90 hover:text-white"
+            >
+              Войти
+            </Link>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <div className="truncate text-[13px] text-white/80" title={email}>
+                {email}
+                {badge ? (
+                  <span className="pointer-events-none ml-2 rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] text-white/70">
+                    {badge}
+                  </span>
+                ) : null}
+              </div>
+              <form method="POST" action="/api/auth/signout">
+                <input type="hidden" name="callbackUrl" value={`/${detectedLocale}`} />
+                <button
+                  className="rounded-md border border-white/20 px-3 py-1 text-[13px] text-white/80 hover:bg-white/10"
+                  onClick={onClose}
+                >
+                  Выйти
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </aside>
-    </div>
+    </>
   );
 }

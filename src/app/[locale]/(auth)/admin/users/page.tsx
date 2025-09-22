@@ -1,5 +1,6 @@
+// src/app/[locale]/(auth)/admin/users/page.tsx
 import "server-only";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";        // ⬅️ именованный импорт
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import RowActions from "./row-actions";
@@ -29,13 +30,15 @@ export default async function Page({
 
   const where: any = {
     AND: [
-      q ? {
-        OR: [
-          { email: { contains: q, mode: "insensitive" } },
-          { name:  { contains: q, mode: "insensitive" } },
-          { telegram: { contains: q, mode: "insensitive" } },
-        ],
-      } : {},
+      q
+        ? {
+            OR: [
+              { email: { contains: q, mode: "insensitive" } },
+              { name: { contains: q, mode: "insensitive" } },
+              { telegram: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : {},
       status ? { status } : {},
       role ? { role } : {},
     ],
@@ -49,8 +52,13 @@ export default async function Page({
       skip: (page - 1) * perPage,
       take: perPage,
       select: {
-        id: true, email: true, name: true, telegram: true,
-        role: true, status: true, createdAt: true,
+        id: true,
+        email: true,
+        name: true,
+        telegram: true,
+        role: true,
+        status: true,
+        createdAt: true,
       },
     }),
   ]);

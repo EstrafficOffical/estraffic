@@ -1,191 +1,341 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import NavDrawer from '@/app/components/NavDrawer';
 
 type Summary = {
-  from: string | Date; to: string | Date;
-  clicks: number; conversions: number; revenue: number; epc: number; cr: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  epc: number;
+  cr: number;
 };
-type Point = { day: string; clicks: number; conversions: number; revenue: number };
 
-type ByOfferItem = { offerId: string; title: string; tag: string | null;
-  clicks: number; conversions: number; revenue: number; epc: number; cr: number; };
-type ByEventItem = { type: string; conversions: number; revenue: number };
-type BySourceItem = { source: string; clicks: number; conversions: number; revenue: number; epc: number; cr: number };
+type ByOfferRow = {
+  offerId: string;
+  title: string;
+  tag?: string | null;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  epc: number;
+  cr: number;
+};
+
+type BySourceRow = {
+  source: string | null; // subId
+  clicks: number;
+  conversions: number;
+  revenue: number;
+  epc: number;
+  cr: number;
+};
+
+type ByEventRow = {
+  type: string; // REG | DEP | SALE | ...
+  conversions: number;
+  revenue: number;
+};
+
+type SeriesPoint = { day: string; clicks: number; conversions: number; revenue: number };
 
 export default function StatsPage() {
-  const [range, setRange] = useState<"7" | "30">("7");
+  // ——— выдвижное меню
+  const pathname = usePathname();
+  const locale = (pathname?.split('/')?.[1] || 'ru') as string;
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // ——— фильтры периода
+  const [from, setFrom] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  });
+  const [to, setTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
+
+  // ——— данные
   const [loading, setLoading] = useState(true);
-
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [series, setSeries] = useState<Point[]>([]);
+  const [byOffer, setByOffer] = useState<ByOfferRow[]>([]);
+  const [bySource, setBySource] = useState<BySourceRow[]>([]);
+  const [byEvent, setByEvent] = useState<ByEventRow[]>([]);
+  const [series, setSeries] = useState<SeriesPoint[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const [byOffer, setByOffer] = useState<ByOfferItem[]>([]);
-  const [byEvent, setByEvent] = useState<ByEventItem[]>([]);
-  const [bySource, setBySource] = useState<BySourceItem[]>([]);
-
-  const { fromISO, toISO } = useMemo(() => {
-    const to = new Date();
-    const days = range === "7" ? 7 : 30;
-    const from = new Date(to.getTime() - days * 24 * 3600 * 1000);
-    return { fromISO: from.toISOString(), toISO: to.toISOString() };
-  }, [range]);
-
+  // ——— загрузка
   useEffect(() => {
     let alive = true;
     (async () => {
-      setLoading(true);
       try {
-        const [s1, s2, s3, s4, s5] = await Promise.all([
-          fetch(`/api/stats/summary?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`).then(r => r.json()),
-          fetch(`/api/stats/timeseries?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`).then(r => r.json()),
-          fetch(`/api/stats/by-offer?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`).then(r => r.json()),
-          fetch(`/api/stats/by-event?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`).then(r => r.json()),
-          fetch(`/api/stats/by-source?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}&limit=50`).then(r => r.json()),
+        setLoading(true);
+        setError(null);
+
+        const qs = new URLSearchParams({
+          from: new Date(from + 'T00:00:00Z').toISOString(),
+          to: new Date(to + 'T23:59:59Z').toISOString(),
+        }).toString();
+
+        const [sRes, oRes, srcRes, eRes, tRes] = await Promise.all([
+          fetch(`/api/stats/summary?${qs}`, { cache: 'no-store' }),
+          fetch(`/api/stats/by-offer?${qs}`, { cache: 'no-store' }),
+          fetch(`/api/stats/by-source?${qs}`, { cache: 'no-store' }),
+          fetch(`/api/stats/by-event?${qs}`, { cache: 'no-store' }),
+          fetch(`/api/stats/timeseries?${qs}`, { cache: 'no-store' }),
         ]);
+
+        const sJson = await sRes.json().catch(() => null);
+        const oJson = await oRes.json().catch(() => null);
+        const srcJson = await srcRes.json().catch(() => null);
+        const eJson = await eRes.json().catch(() => null);
+        const tJson = await tRes.json().catch(() => null);
+
         if (!alive) return;
-        setSummary(s1);
-        setSeries(s2.series || []);
-        setByOffer(s3.items || []);
-        setByEvent(s4.items || []);
-        setBySource(s5.items || []);
+
+        setSummary(
+          sRes.ok && sJson && typeof sJson === 'object'
+            ? (sJson as Summary)
+            : { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0 },
+        );
+        setByOffer(oRes.ok ? (Array.isArray(oJson?.items) ? oJson.items : (Array.isArray(oJson) ? oJson : [])) : []);
+        setBySource(srcRes.ok ? (Array.isArray(srcJson?.items) ? srcJson.items : (Array.isArray(srcJson) ? srcJson : [])) : []);
+        setByEvent(eRes.ok ? (Array.isArray(eJson?.items) ? eJson.items : (Array.isArray(eJson) ? eJson : [])) : []);
+        setSeries(tRes.ok ? (Array.isArray(tJson?.series) ? tJson.series : (Array.isArray(tJson) ? tJson : [])) : []);
+      } catch (err) {
+        if (alive) setError('Не удалось загрузить статистику');
       } finally {
         if (alive) setLoading(false);
       }
     })();
     return () => { alive = false; };
-  }, [fromISO, toISO]);
+  }, [from, to]);
+
+  const fmtMoney = (n: number) =>
+    `$${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const kpis = useMemo(() => {
+    const s = summary || { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0 };
+    return [
+      { title: 'Clicks', value: (s.clicks ?? 0).toLocaleString() },
+      { title: 'Conversions', value: (s.conversions ?? 0).toLocaleString() },
+      { title: 'Revenue', value: fmtMoney(s.revenue ?? 0) },
+      { title: 'EPC', value: fmtMoney(s.epc ?? 0) },
+      { title: 'CR', value: `${(((s.cr ?? 0) * 100) || 0).toFixed(2)}%` },
+    ];
+  }, [summary]);
 
   return (
-    <div className="p-4 text-white space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Статистика</h1>
-        <div className="flex gap-2">
-          <Btn onClick={() => setRange("7")} active={range==="7"}>7 дней</Btn>
-          <Btn onClick={() => setRange("30")} active={range==="30"}>30 дней</Btn>
+    <section className="relative mx-auto max-w-7xl space-y-8 px-4 py-8">
+      {/* шапка как на остальных страницах: квадрат со ⭐ + Estrella */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setMenuOpen(true)}
+          aria-label="Open navigation"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/20 border border-white/40"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4 text-white/80" aria-hidden>
+            <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
+          </svg>
+        </button>
+        <span className="font-semibold text-white">Estrella</span>
+      </div>
+
+      <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Statistics</h1>
+
+      {/* фильтры */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-white/15 bg-white/5 p-3">
+          <label className="mb-1 block text-sm text-white/70">From</label>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="w-full rounded-xl border border-white/15 bg-zinc-900 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-white/20"
+          />
+        </div>
+        <div className="rounded-2xl border border-white/15 bg-white/5 p-3">
+          <label className="mb-1 block text-sm text-white/70">To</label>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="w-full rounded-xl border border-white/15 bg-zinc-900 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-white/20"
+          />
+        </div>
+        <div className="rounded-2xl border border-white/15 bg-white/5 p-3">
+          <label className="mb-1 block text-sm text-white/70">Status</label>
+          <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white/70">
+            {loading ? 'Загрузка…' : 'Готово'}
+          </div>
         </div>
       </div>
 
-      {/* Карточки */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <Metric title="Клики" value={summary?.clicks ?? 0} loading={loading} />
-        <Metric title="Конверсии" value={summary?.conversions ?? 0} loading={loading} />
-        <Metric title="Доход" value={(summary?.revenue ?? 0).toFixed(2)} loading={loading} />
-        <Metric title="EPC" value={(summary?.epc ?? 0).toFixed(4)} loading={loading} />
-        <Metric title="CR" value={`${(((summary?.cr ?? 0) * 100)).toFixed(2)}%`} loading={loading} />
+      {/* KPI */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
+        {kpis.map((k) => (
+          <div key={k.title} className="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 backdrop-blur-md">
+            <div className="text-sm text-white/75">{k.title}</div>
+            <div className="mt-1 text-2xl font-semibold">{k.value}</div>
+          </div>
+        ))}
       </div>
 
-      {/* Ряд по дням (простая таблица) */}
-      <Section title="Динамика по дням">
-        <Table
-          header={["День","Клики","Конверсии","Доход"]}
-          rows={series.map(p => [p.day, p.clicks, p.conversions, p.revenue.toFixed(2)])}
-          loading={loading}
-        />
-      </Section>
-
-      {/* Разрезы */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Section title="Топ офферов">
-          <Table
-            header={["Оффер","Клики","Конверсии","Доход","EPC","CR"]}
-            rows={byOffer.map(o => [
-              o.title || o.offerId,
-              o.clicks,
-              o.conversions,
-              o.revenue.toFixed(2),
-              o.epc.toFixed(4),
-              `${(o.cr*100).toFixed(2)}%`,
-            ])}
-            loading={loading}
-          />
-        </Section>
-
-        <Section title="Типы событий">
-          <Table
-            header={["Событие","Конверсии","Доход"]}
-            rows={byEvent.map(e => [e.type, e.conversions, e.revenue.toFixed(2)])}
-            loading={loading}
-          />
-        </Section>
-      </div>
-
-      <Section title="Источники (sub1)">
-        <Table
-          header={["Источник","Клики","Конверсии","Доход","EPC","CR"]}
-          rows={bySource.map(s => [
-            s.source,
-            s.clicks,
-            s.conversions,
-            s.revenue.toFixed(2),
-            s.epc.toFixed(4),
-            `${(s.cr*100).toFixed(2)}%`,
-          ])}
-          loading={loading}
-        />
-      </Section>
-    </div>
-  );
-}
-
-function Btn({ active, children, ...props }: any) {
-  return (
-    <button
-      {...props}
-      className={`rounded-xl border px-3 py-1.5 ${active ? "border-white/60 bg-white/10" : "border-white/20 hover:bg-white/10"}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Metric({ title, value, loading }: { title: string; value: any; loading: boolean }) {
-  return (
-    <div className="rounded-2xl border border-white/10 p-4 bg-white/5">
-      <div className="text-xs text-white/60 mb-1">{title}</div>
-      <div className="text-lg font-semibold">{loading ? "…" : value}</div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-sm font-medium text-white/90 mb-2">{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function Table({
-  header,
-  rows,
-  loading,
-}: {
-  header: string[];
-  rows: (string | number)[][];
-  loading: boolean;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-white/5">
-          <tr>{header.map(h => <th key={h} className="text-left px-3 py-2">{h}</th>)}</tr>
-        </thead>
-        <tbody>
-          {loading ? (
-            <tr><td className="px-3 py-6 text-center text-white/60" colSpan={header.length}>Загрузка…</td></tr>
-          ) : rows.length === 0 ? (
-            <tr><td className="px-3 py-6 text-center text-white/60" colSpan={header.length}>Нет данных</td></tr>
-          ) : (
-            rows.map((r, i) => (
-              <tr key={i} className="border-t border-white/10">
-                {r.map((c, j) => <td key={j} className="px-3 py-2">{c}</td>)}
+      {/* By Offer */}
+      <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
+        <div className="border-b border-white/10 px-4 py-3">
+          <h2 className="text-xl font-semibold">By Offer</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-white/5 text-white/70">
+              <tr className="text-left">
+                <Th>Offer</Th><Th>Clicks</Th><Th>Conv</Th><Th>Revenue</Th><Th>EPC</Th><Th>CR</Th>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {loading ? (
+                <tr><td colSpan={6} className="p-6 text-white/60">Загрузка…</td></tr>
+              ) : byOffer.length === 0 ? (
+                <tr><td colSpan={6} className="p-6 text-white/60">Пусто</td></tr>
+              ) : (
+                byOffer.map((r) => (
+                  <tr key={r.offerId}>
+                    <Td>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{r.title}</span>
+                        <span className="text-xs text-white/50">{r.offerId}{r.tag ? ` · #${r.tag}` : ''}</span>
+                      </div>
+                    </Td>
+                    <Td>{r.clicks}</Td>
+                    <Td>{r.conversions}</Td>
+                    <Td>{fmtMoney(r.revenue)}</Td>
+                    <Td>{fmtMoney(r.epc)}</Td>
+                    <Td>{((r.cr ?? 0) * 100).toFixed(2)}%</Td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* By Source */}
+      <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
+        <div className="border-b border-white/10 px-4 py-3">
+          <h2 className="text-xl font-semibold">By Source (subId)</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-white/5 text-white/70">
+              <tr className="text-left">
+                <Th>Source</Th><Th>Clicks</Th><Th>Conv</Th><Th>Revenue</Th><Th>EPC</Th><Th>CR</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {loading ? (
+                <tr><td colSpan={6} className="p-6 text-white/60">Загрузка…</td></tr>
+              ) : bySource.length === 0 ? (
+                <tr><td colSpan={6} className="p-6 text-white/60">Пусто</td></tr>
+              ) : (
+                bySource.map((r, i) => (
+                  <tr key={(r.source ?? '') + i}>
+                    <Td className="font-mono">{r.source ?? '—'}</Td>
+                    <Td>{r.clicks}</Td>
+                    <Td>{r.conversions}</Td>
+                    <Td>{fmtMoney(r.revenue)}</Td>
+                    <Td>{fmtMoney(r.epc)}</Td>
+                    <Td>{((r.cr ?? 0) * 100).toFixed(2)}%</Td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* By Event */}
+      <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
+        <div className="border-b border-white/10 px-4 py-3">
+          <h2 className="text-xl font-semibold">By Event</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-white/5 text-white/70">
+              <tr className="text-left">
+                <Th>Type</Th><Th>Conversions</Th><Th>Revenue</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {loading ? (
+                <tr><td colSpan={3} className="p-6 text-white/60">Загрузка…</td></tr>
+              ) : byEvent.length === 0 ? (
+                <tr><td colSpan={3} className="p-6 text-white/60">Пусто</td></tr>
+              ) : (
+                byEvent.map((r) => (
+                  <tr key={r.type}>
+                    <Td><Badge>{r.type}</Badge></Td>
+                    <Td>{r.conversions}</Td>
+                    <Td>{fmtMoney(r.revenue)}</Td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Timeseries */}
+      <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
+        <div className="border-b border-white/10 px-4 py-3">
+          <h2 className="text-xl font-semibold">Timeseries (day)</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-white/5 text-white/70">
+              <tr className="text-left">
+                <Th>Day</Th><Th>Clicks</Th><Th>Conv</Th><Th>Revenue</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {loading ? (
+                <tr><td colSpan={4} className="p-6 text-white/60">Загрузка…</td></tr>
+              ) : series.length === 0 ? (
+                <tr><td colSpan={4} className="p-6 text-white/60">Пусто</td></tr>
+              ) : (
+                series.map((p) => (
+                  <tr key={p.day}>
+                    <Td>{p.day}</Td>
+                    <Td>{p.clicks}</Td>
+                    <Td>{p.conversions}</Td>
+                    <Td>{fmtMoney(p.revenue)}</Td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {error && (
+        <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-rose-100">
+          {error}
+        </div>
+      )}
+
+      {/* выдвижное меню */}
+      <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} />
+    </section>
   );
+}
+
+/* ——— мелкие утилиты UI ——— */
+
+function Th({ children }: { children: React.ReactNode }) {
+  return <th className="px-4 py-3 font-semibold">{children}</th>;
+}
+function Td({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-4 py-3 ${className ?? ''}`}>{children}</td>;
+}
+function Badge({ children }: { children: React.ReactNode }) {
+  return <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/10 px-2 py-1 text-xs">{children}</span>;
 }

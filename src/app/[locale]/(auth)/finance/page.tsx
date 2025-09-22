@@ -1,153 +1,175 @@
-"use client";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+import { revalidatePath } from "next/cache";
+import type { Wallet, Payout } from "@prisma/client";
+import HeaderClient from "./HeaderClient"; // ⭐ как на Statistics
 
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
-import NavDrawer from "@/app/components/NavDrawer";
+const WalletSchema = z.object({
+  label: z.string().min(2).max(32),
+  address: z.string().min(4).max(200),
+});
 
-type Wallet = {
-  id: string;
-  label: string;       // TRC20 / ERC20 / BTC ...
-  address: string;
-  verified: boolean;
-  isPrimary: boolean;
-};
+export default async function Page({ params: { locale } }: { params: { locale: string } }) {
+  const session = await auth();
+  if (!session?.user) return null;
+  const userId = (session.user as { id: string }).id;
 
-type Payout = {
-  id: string;
-  date: string;        // ISO
-  amount: number;
-  status: "Paid" | "Pending" | "Rejected";
-  txHash?: string | null;
-};
+  // агрегаты и выборки
+  const revenueAggP = prisma.conversion.aggregate({
+    where: { userId, amount: { not: null } },
+    _sum: { amount: true },
+  });
+  const paidAggP = prisma.payout.aggregate({
+    where: { userId, status: "Paid" },
+    _sum: { amount: true },
+  });
+  const pendingAggP = prisma.payout.aggregate({
+    where: { userId, status: "Pending" },
+    _sum: { amount: true },
+  });
+  const walletsP = prisma.wallet.findMany({
+    where: { userId },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+  }) as Promise<Wallet[]>;
+  const payoutsP = prisma.payout.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  }) as Promise<Payout[]>;
 
-export default function FinancePage() {
-  const pathname = usePathname();
-  const locale = (pathname?.split("/")?.[1] || "ru") as string;
+  const [revenueAgg, paidAgg, pendingAgg, wallets, payouts] = await Promise.all([
+    revenueAggP,
+    paidAggP,
+    pendingAggP,
+    walletsP,
+    payoutsP,
+  ]);
 
-  const [menuOpen, setMenuOpen] = useState(false);
+  const revenue = Number(revenueAgg._sum.amount ?? 0);
+  const totalPaid = Number(paidAgg._sum.amount ?? 0);
+  const pending = Number(pendingAgg._sum.amount ?? 0);
+  const available = Math.max(0, revenue - totalPaid - pending);
 
-  const [available, setAvailable] = useState(0);
-  const [pending, setPending] = useState(0);
-  const [totalPaid, setTotalPaid] = useState(0);
+  // ====== server actions ======
+  async function addWallet(formData: FormData) {
+    "use server";
+    const s = await auth();
+    if (!s?.user) return;
 
-  const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [loading, setLoading] = useState(true);
+    const parsed = WalletSchema.safeParse({
+      label: String(formData.get("label") ?? ""),
+      address: String(formData.get("address") ?? ""),
+    });
+    if (!parsed.success) return;
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setLoading(true);
-        const [sumRes, wRes, pRes] = await Promise.all([
-          fetch("/api/finance/summary"),
-          fetch("/api/wallets/list"),
-          fetch("/api/payouts/list"),
-        ]);
+    const uid = (s.user as { id: string }).id;
 
-        if (sumRes.ok) {
-          const s = await sumRes.json();
-          if (!alive) return;
-          setAvailable(Number(s.available ?? 0));
-          setPending(Number(s.pending ?? 0));
-          setTotalPaid(Number(s.totalPaid ?? 0));
-        } else {
-          if (!alive) return;
-          setAvailable(1250);
-          setPending(300);
-          setTotalPaid(5200);
-        }
+    await prisma.$transaction(async (tx) => {
+      const hasAny = await tx.wallet.count({ where: { userId: uid } });
+      await tx.wallet.create({
+        data: {
+          userId: uid,
+          label: parsed.data.label,
+          address: parsed.data.address,
+          verified: false,
+          isPrimary: hasAny === 0,
+        },
+      });
+    });
 
-        if (wRes.ok) {
-          const ws = (await wRes.json()) as Wallet[];
-          if (alive) setWallets(ws);
-        } else if (alive) {
-          setWallets([
-            {
-              id: "w1",
-              label: "TRC20",
-              address: "TQnEjJgdxyz…",
-              verified: true,
-              isPrimary: true,
-            },
-            {
-              id: "w2",
-              label: "ERC20",
-              address: "0xFLSnqRFc1Z…",
-              verified: true,
-              isPrimary: false,
-            },
-            {
-              id: "w3",
-              label: "BTC",
-              address: "bc1qar0srr7x…",
-              verified: false,
-              isPrimary: false,
-            },
-          ]);
-        }
+    revalidatePath(`/${locale}/finance`);
+  }
 
-        if (pRes.ok) {
-          const ps = (await pRes.json()) as Payout[];
-          if (alive) setPayouts(ps);
-        } else if (alive) {
-          setPayouts([
-            { id: "p1", date: "2025-04-03", amount: 1000, status: "Paid", txHash: "e3c2fa6…" },
-            { id: "p2", date: "2025-03-26", amount: 500, status: "Pending", txHash: null },
-            { id: "p3", date: "2025-03-18", amount: 1200, status: "Paid", txHash: "9a81b1…" },
-          ]);
-        }
-      } catch {
-        /* демо-данные уже выставлены выше */
-      } finally {
-        if (alive) setLoading(false);
+  async function setPrimary(formData: FormData) {
+    "use server";
+    const s = await auth();
+    if (!s?.user) return;
+
+    const id = String(formData.get("id") ?? "");
+    if (!id) return;
+
+    const uid = (s.user as { id: string }).id;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.wallet.updateMany({ where: { userId: uid }, data: { isPrimary: false } });
+      await tx.wallet.update({ where: { id }, data: { isPrimary: true } });
+    });
+
+    revalidatePath(`/${locale}/finance`);
+  }
+
+  async function deleteWallet(formData: FormData) {
+    "use server";
+    const s = await auth();
+    if (!s?.user) return;
+
+    const id = String(formData.get("id") ?? "");
+    if (!id) return;
+
+    const uid = (s.user as { id: string }).id;
+
+    await prisma.wallet.delete({ where: { id } });
+
+    const stillPrimary = await prisma.wallet.findFirst({
+      where: { userId: uid, isPrimary: true },
+    });
+
+    if (!stillPrimary) {
+      const first = await prisma.wallet.findFirst({
+        where: { userId: uid },
+        orderBy: { createdAt: "asc" },
+      });
+      if (first) {
+        await prisma.wallet.update({ where: { id: first.id }, data: { isPrimary: true } });
       }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+    }
+
+    revalidatePath(`/${locale}/finance`);
+  }
+
+  const fmt = (n: number) =>
+    `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const tone = (s: string) => (s === "Paid" ? "green" : s === "Pending" ? "orange" : "default");
 
   return (
-    <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-8">
-      {/* Заголовок, как в остальных разделах: ⭐ + Estrella */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setMenuOpen(true)}
-          aria-label="Open navigation"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/20 border border-white/40"
-        >
-          <svg viewBox="0 0 24 24" className="w-4 h-4 text-black/80" aria-hidden>
-            <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
-          </svg>
-        </button>
-        <span className="font-semibold text-white">Estrella</span>
-      </div>
+    <section className="mx-auto max-w-7xl space-y-8 p-4 text-white/90">
+      {/* ⭐ абсолютно такая же шапка, как на Statistics */}
+      <HeaderClient locale={locale} />
 
       <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Finance</h1>
 
-      {/* KPI карточки */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <KpiCard title="Available Balance" value={`$${available.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
-        <KpiCard title="Pending" value={`$${pending.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
-        <KpiCard title="Total Paid" value={`$${totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Kpi title="Available Balance" value={fmt(available)} />
+        <Kpi title="Pending" value={fmt(pending)} />
+        <Kpi title="Total Paid" value={fmt(totalPaid)} />
       </div>
 
       {/* Wallets */}
-      <div className="rounded-2xl bg-white/8 border border-white/15 backdrop-blur-xl">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+      <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <h2 className="text-xl font-semibold">Wallets</h2>
-          <button
-            onClick={() => alert("Add Wallet — заглушка")}
-            className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
-          >
-            Add Wallet
-          </button>
+          <form action={addWallet} className="flex items-center gap-2">
+            <input
+              name="label"
+              placeholder="Label (TRC20 / ERC20 / BANK)"
+              className="w-44 rounded-xl bg-black/40 px-3 py-2 text-sm outline-none ring-1 ring-white/10 focus:ring-white/20"
+            />
+            <input
+              name="address"
+              placeholder="Address / IBAN / Card"
+              className="w-64 rounded-xl bg-black/40 px-3 py-2 text-sm outline-none ring-1 ring-white/10 focus:ring-white/20"
+            />
+            <button className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15">
+              Add Wallet
+            </button>
+          </form>
         </div>
-
         <div className="divide-y divide-white/10">
+          {wallets.length === 0 && (
+            <div className="px-4 py-6 text-white/60">Нет сохранённых реквизитов</div>
+          )}
           {wallets.map((w) => (
-            <div key={w.id} className="px-4 py-3 flex items-center justify-between">
+            <div key={w.id} className="flex items-center justify-between px-4 py-3">
               <div>
                 <div className="flex items-center gap-3">
                   <span className="font-semibold">{w.label}</span>
@@ -158,37 +180,39 @@ export default function FinancePage() {
                   )}
                   {w.isPrimary && <Badge tone="blue">Primary</Badge>}
                 </div>
-                <div className="text-white/70 text-sm mt-1 truncate max-w-[60vw]" title={w.address}>
+                <div
+                  className="mt-1 max-w-[60vw] truncate text-sm text-white/70"
+                  title={w.address}
+                >
                   {w.address}
                 </div>
               </div>
-
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-white/80 hidden sm:block">Set as Primary</label>
-                <input
-                  type="checkbox"
-                  checked={w.isPrimary}
-                  onChange={() => alert("Set Primary — заглушка")}
-                  className="h-5 w-5 accent-white/70"
-                />
+              <div className="flex items-center gap-2">
+                {!w.isPrimary && (
+                  <form action={setPrimary}>
+                    <input type="hidden" name="id" value={w.id} />
+                    <button className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15">
+                      Set Primary
+                    </button>
+                  </form>
+                )}
+                <form action={deleteWallet}>
+                  <input type="hidden" name="id" value={w.id} />
+                  <button className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15">
+                    Delete
+                  </button>
+                </form>
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
       {/* Payouts */}
-      <div className="rounded-2xl bg-white/8 border border-white/15 backdrop-blur-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <h2 className="text-xl font-semibold">Payouts</h2>
-          <button
-            onClick={() => alert("Request Payout — заглушка")}
-            className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
-          >
-            Request Payout
-          </button>
+      <section className="overflow-hidden rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <h2 className="text-xl font-semibold">Payouts (history)</h2>
         </div>
-
         <div className="min-w-full">
           <div className="grid grid-cols-12 px-4 py-2 text-sm text-white/60">
             <div className="col-span-3">Date</div>
@@ -196,38 +220,34 @@ export default function FinancePage() {
             <div className="col-span-3">Status</div>
             <div className="col-span-3">TxHash</div>
           </div>
-
           <div className="divide-y divide-white/10">
-            {loading && <div className="px-4 py-6 text-white/60">Loading…</div>}
-            {!loading && payouts.length === 0 && (
+            {payouts.length === 0 && (
               <div className="px-4 py-6 text-white/60">No payouts yet</div>
             )}
             {payouts.map((p) => (
               <div key={p.id} className="grid grid-cols-12 px-4 py-3">
-                <div className="col-span-3">{new Date(p.date).toLocaleDateString()}</div>
-                <div className="col-span-3">${p.amount.toFixed(2)}</div>
+                <div className="col-span-3">{p.createdAt.toISOString().slice(0, 10)}</div>
+                <div className="col-span-3">{fmt(Number(p.amount))}</div>
                 <div className="col-span-3">
-                  <Badge tone={p.status === "Paid" ? "green" : p.status === "Pending" ? "orange" : "default"}>
-                    {p.status}
-                  </Badge>
+                  <Badge tone={tone(p.status)}>{p.status}</Badge>
                 </div>
                 <div className="col-span-3 truncate">{p.txHash ?? "—"}</div>
               </div>
             ))}
           </div>
         </div>
-      </div>
-
-      <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
+      </section>
     </section>
   );
 }
 
-function KpiCard({ title, value }: { title: string; value: string }) {
+/* ——— UI утилиты ——— */
+
+function Kpi({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-white/8 border border-white/15 backdrop-blur-xl px-4 py-3">
-      <div className="text-white/75 text-sm">{title}</div>
-      <div className="text-2xl font-semibold mt-1">{value}</div>
+    <div className="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 backdrop-blur-md">
+      <div className="text-sm text-white/75">{title}</div>
+      <div className="mt-1 text-2xl font-semibold">{value}</div>
     </div>
   );
 }
@@ -246,7 +266,7 @@ function Badge({
     orange: "bg-amber-400/15 border-amber-400/30 text-amber-200",
   };
   return (
-    <span className={`inline-flex items-center rounded-lg px-2 py-1 text-xs border ${map[tone]}`}>
+    <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-xs ${map[tone]}`}>
       {children}
     </span>
   );

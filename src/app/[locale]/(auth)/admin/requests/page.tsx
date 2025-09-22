@@ -1,7 +1,7 @@
 // src/app/[locale]/(auth)/admin/requests/page.tsx
 import "server-only";
-import prisma from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import  { auth }  from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Actions from "./row-actions";
 import HeaderClient from "./HeaderClient";
@@ -48,19 +48,25 @@ export default async function Page({
       take: perPage,
       include: {
         user: { select: { id: true, email: true, name: true } },
-        offer: { select: { id: true, title: true, tag: true} },
+        offer: { select: { id: true, title: true, tag: true } },
       },
-    }),
+    }) as Promise<
+      Array<{
+        id: string;
+        status: "PENDING" | "APPROVED" | "REJECTED";
+        createdAt: Date;
+        user: { id: string; email: string; name: string | null };
+        offer: { id: string; title: string; tag: string | null };
+      }>
+    >,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   return (
     <section className="relative p-4 space-y-4 text-white">
-      {/* Клиентская шапка с кнопкой «Меню» и NavDrawer */}
       <HeaderClient title="Заявки на офферы" />
 
-      {/* Фильтры */}
       <form className="flex gap-2">
         <input
           name="q"
@@ -68,22 +74,15 @@ export default async function Page({
           placeholder="Поиск по email/офферу"
           className="bg-zinc-900 text-white placeholder-white/50 rounded-xl px-3 py-2"
         />
-        <select
-          name="status"
-          defaultValue={status}
-          className="bg-zinc-900 text-white rounded-xl px-3 py-2"
-        >
+        <select name="status" defaultValue={status} className="bg-zinc-900 text-white rounded-xl px-3 py-2">
           <option value="">Все</option>
           <option value="PENDING">PENDING</option>
           <option value="APPROVED">APPROVED</option>
           <option value="REJECTED">REJECTED</option>
         </select>
-        <button className="rounded-xl border border-white/20 px-3 py-2 hover:bg-white/10">
-          Фильтр
-        </button>
+        <button className="rounded-xl border border-white/20 px-3 py-2 hover:bg-white/10">Фильтр</button>
       </form>
 
-      {/* Таблица */}
       <div className="rounded-xl border border-white/10 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-white/5">
@@ -124,7 +123,6 @@ export default async function Page({
         </table>
       </div>
 
-      {/* Пагинация (информер) */}
       <div className="flex items-center gap-2">
         <span className="text-white/60 text-sm">
           Стр. {page} из {totalPages} • всего {total}

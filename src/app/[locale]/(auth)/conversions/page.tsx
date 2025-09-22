@@ -10,9 +10,10 @@ type Conv = {
   user: { id: string; email: string | null; name: string | null } | null;
   offer: { id: string; title: string } | null;
   subId: string | null;
-  amount: number | null;
+  amount: number | string | null;
   currency: string | null;
-  type: "REG" | "DEP" | "REBILL" | "SALE" | "LEAD";
+  type?: "REG" | "DEP" | "REBILL" | "SALE" | "LEAD";
+  event?: "REG" | "DEP" | "REBILL" | "SALE" | "LEAD";
   txId: string | null;
 };
 
@@ -27,13 +28,11 @@ export default function ConversionsPage() {
   const [rows, setRows] = useState<Conv[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // фильтры
   const [q, setQ] = useState("");
   const [type, setType] = useState<TypeFilter>("ALL");
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
 
-  // тестовый постбек
   const [testOpen, setTestOpen] = useState(false);
   const [test, setTest] = useState({
     click_id: "",
@@ -72,16 +71,14 @@ export default function ConversionsPage() {
     const toTs = to ? new Date(to).getTime() + 24 * 3600 * 1000 - 1 : Number.MAX_SAFE_INTEGER;
 
     return rows.filter((r) => {
-      // тип
-      if (type !== "ALL" && r.type !== type) return false;
-      // дата
+      const rowType = (r.type ?? r.event) as TypeFilter | undefined;
+      if (type !== "ALL" && rowType !== type) return false;
       const t = new Date(r.createdAt).getTime();
       if (t < fromTs || t > toTs) return false;
-      // строковый поиск
       if (!ql) return true;
-      const hay =
+      const hay = (
         `${r.offer?.title ?? ""} ${r.offer?.id ?? ""} ${r.user?.email ?? ""} ${r.user?.name ?? ""} ${r.subId ?? ""} ${r.txId ?? ""}`
-          .toLowerCase();
+      ).toLowerCase();
       return hay.includes(ql);
     });
   }, [rows, q, type, from, to]);
@@ -90,7 +87,7 @@ export default function ConversionsPage() {
     e.preventDefault();
     setTestMsg(null);
     const url =
-      `/api/postbacks/ingest?` +
+      "/api/postbacks/ingest?" +
       new URLSearchParams({
         click_id: test.click_id,
         offer_id: test.offer_id,
@@ -114,14 +111,13 @@ export default function ConversionsPage() {
 
   return (
     <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-8">
-      {/* Шапка: квадратная ⭐ + Estrella (как на других страницах) */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
           aria-label="Open navigation"
           className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/20 border border-white/40"
         >
-          <svg viewBox="0 0 24 24" className="w-4 h-4 text-black/80" aria-hidden>
+          <svg viewBox="0 0 24 24" className="w-4 h-4 text-black/80" aria-hidden="true">
             <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
           </svg>
         </button>
@@ -130,7 +126,6 @@ export default function ConversionsPage() {
 
       <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Conversions</h1>
 
-      {/* Панель фильтров */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
         <div className="md:col-span-2">
           <div className="relative">
@@ -168,8 +163,7 @@ export default function ConversionsPage() {
         />
       </div>
 
-      {/* Тестовый постбек (по желанию можно свернуть) */}
-      <div className="rounded-2xl bg-white/8 border border-white/15 backdrop-blur-xl p-4">
+      <div className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xl p-4">
         <button
           className="text-sm text-white/80 underline underline-offset-4"
           onClick={() => setTestOpen((v) => !v)}
@@ -210,7 +204,6 @@ export default function ConversionsPage() {
         )}
       </div>
 
-      {/* Таблица */}
       <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
         <table className="min-w-full text-sm">
           <thead className="text-white/70">
@@ -231,23 +224,27 @@ export default function ConversionsPage() {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={8} className="p-6 text-white/60">Пока пусто</td></tr>
             ) : (
-              filtered.map((r) => (
-                <tr key={r.id} className="border-t border-white/10">
-                  <Td>{new Date(r.createdAt).toLocaleString()}</Td>
-                  <Td>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{r.offer?.title ?? "—"}</span>
-                      <span className="text-white/50 text-xs">{r.offer?.id}</span>
-                    </div>
-                  </Td>
-                  <Td><Badge>{r.type}</Badge></Td>
-                  <Td>{r.amount != null ? `$${r.amount.toFixed(2)}` : "—"}</Td>
-                  <Td>{r.currency ?? "—"}</Td>
-                  <Td className="font-mono">{r.subId ?? "—"}</Td>
-                  <Td className="font-mono">{r.txId ?? "—"}</Td>
-                  <Td>{r.user?.email ?? r.user?.name ?? "—"}</Td>
-                </tr>
-              ))
+              filtered.map((r) => {
+                const rowType = r.type ?? r.event ?? "—";
+                const amountStr = r.amount != null ? "$" + Number(r.amount).toFixed(2) : "—";
+                return (
+                  <tr key={r.id} className="border-t border-white/10">
+                    <Td>{new Date(r.createdAt).toLocaleString()}</Td>
+                    <Td>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{r.offer?.title ?? "—"}</span>
+                        <span className="text-white/50 text-xs">{r.offer?.id}</span>
+                      </div>
+                    </Td>
+                    <Td><Badge>{rowType}</Badge></Td>
+                    <Td>{amountStr}</Td>
+                    <Td>{r.currency ?? "—"}</Td>
+                    <Td className="font-mono">{r.subId ?? "—"}</Td>
+                    <Td className="font-mono">{r.txId ?? "—"}</Td>
+                    <Td>{r.user?.email ?? r.user?.name ?? "—"}</Td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

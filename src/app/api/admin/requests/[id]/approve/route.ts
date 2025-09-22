@@ -1,27 +1,50 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import  { auth }  from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  const role = (session?.user as any)?.role;
-  if (role !== "ADMIN") {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  const session = await auth();
+  const role = (session as any)?.user?.role as string | undefined;
+
+  if (!session?.user || role !== "ADMIN") {
+    return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  // 1) апрувим запрос
-  const reqRow = await prisma.offerRequest.update({
-    where: { id: params.id },
-    data: { status: "APPROVED" }, // processedAt убрали, т.к. его нет в схеме
-    select: { userId: true, offerId: true },
+  const id = params.id;
+
+  // Ищем заявку
+  const request = await prisma.offerRequest.findUnique({
+    where: { id },
+    select: { id: true, userId: true, offerId: true, status: true },
   });
 
-  // 2) выдаём доступ к офферу
-  await prisma.offerAccess.upsert({
-    where: { userId_offerId: { userId: reqRow.userId, offerId: reqRow.offerId } },
-    create: { userId: reqRow.userId, offerId: reqRow.offerId, approved: true },
-    update: { approved: true },
+  if (!request) {
+    return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
+  }
+
+  // Уже одобрена — просто подтверждаем
+  if (request.status === "APPROVED") {
+    return NextResponse.json({ ok: true, already: true });
+  }
+
+  // Транзакция: ставим APPROVED и выдаём доступ
+  await prisma.$transaction(async (tx) => {
+    await tx.offerRequest.update({
+      where: { id },
+      data: { status: "APPROVED", processedAt: new Date() },
+    });
+
+    await tx.offerAccess.upsert({
+      where: {
+        userId_offerId: { userId: request.userId, offerId: request.offerId },
+      },
+      update: { approved: true },
+      create: {
+        userId: request.userId,
+        offerId: request.offerId,
+        approved: true,
+      },
+    });
   });
 
   return NextResponse.json({ ok: true });

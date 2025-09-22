@@ -1,114 +1,130 @@
 // src/lib/auth.ts
-import type { NextAuthOptions } from "next-auth";
-import { getServerSession } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
-import AppleProvider from "next-auth/providers/apple";
-import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import prisma from "@/lib/prisma";
+import NextAuth, { type NextAuthOptions, getServerSession } from "next-auth";
+import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 
-const isProd = process.env.NODE_ENV === "production";
+// У тебя prisma экспортируется ИМЕНОВАННО
+import { prisma } from "@/lib/prisma";
 
-const providers: NextAuthOptions["providers"] = [];
+// Типы ролей/статусов — под твою схему
+type Role = "USER" | "ADMIN";
+type UserStatus = "PENDING" | "APPROVED" | "BANNED";
 
-// --- Google OAuth (склейка email только вне продакшена)
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  providers.push(
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      allowDangerousEmailAccountLinking: !isProd,
-    })
-  );
+// Augmentation: чтобы TS знал, что кладём в session/jwt
+declare module "next-auth" {
+  interface User {
+    id: string;
+    role: Role;
+    status: UserStatus;
+    name?: string | null;
+  }
+  interface Session {
+    user: {
+      id: string;
+      email?: string | null;
+      name?: string | null;
+      role: Role;
+      status: UserStatus;
+      image?: string | null;
+    };
+  }
 }
-
-// --- Apple OAuth (по желанию)
-if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET) {
-  providers.push(
-    AppleProvider({
-      clientId: process.env.APPLE_CLIENT_ID!,
-      clientSecret: process.env.APPLE_CLIENT_SECRET!,
-    })
-  );
+declare module "next-auth/jwt" {
+  interface JWT {
+    id?: string;
+    role?: Role;
+    status?: UserStatus;
+  }
 }
-
-// --- Credentials (email+password)
-providers.push(
-  CredentialsProvider({
-    name: "Credentials",
-    credentials: {
-      email: { label: "Email", type: "email" },
-      password: { label: "Password", type: "password" },
-    },
-    async authorize(credentials) {
-      const email = credentials?.email?.trim().toLowerCase();
-      const password = credentials?.password ?? "";
-      if (!email || !password) return null;
-
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user || !user.passwordHash) return null;
-
-      const ok = await bcrypt.compare(password, user.passwordHash);
-      if (!ok) return null;
-
-      // PROD: впускаем только APPROVED. DEV: впускаем всех, статус проверяем на страницах/(API).
-      if (isProd && user.status !== "APPROVED") {
-        throw new Error("Account pending approval");
-      }
-
-      return {
-        id: user.id,
-        email: user.email,
-        name: user.name ?? undefined,
-        role: user.role,
-        status: user.status,
-      } as any;
-    },
-  })
-);
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
   session: { strategy: "jwt" },
-  providers,
-  callbacks: {
-    // OAuth: на проде блокируем не-APPROVED. В dev разрешаем, чтобы тестировать гейты.
-    async signIn({ user }) {
-      const email = user?.email;
-      if (!email) return false;
-      const dbUser = await prisma.user.findUnique({ where: { email } });
-      if (isProd && dbUser && dbUser.status !== "APPROVED") return false;
-      return true;
-    },
+  secret: process.env.NEXTAUTH_SECRET,
 
-    async jwt({ token, user }) {
+  providers: [
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      allowDangerousEmailAccountLinking: true,
+    }),
+
+    Credentials({
+      name: "Email & Password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      authorize: async (creds) => {
+        const email = (creds?.email ?? "").trim().toLowerCase();
+        const password = creds?.password ?? "";
+        if (!email || !password) return null;
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user?.passwordHash) return null;
+
+        const ok = await bcrypt.compare(password, user.passwordHash);
+        if (!ok) return null;
+        if (user.status === "BANNED") return null;
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role as Role,
+          status: user.status as UserStatus,
+        };
+      },
+    }),
+  ],
+
+  callbacks: {
+    // any — чтобы не бодаться с версиями типов
+    async jwt({ token, user }: any) {
       if (user) {
         token.id = (user as any).id;
-        token.role = (user as any).role ?? "USER";
-        token.status = (user as any).status ?? "PENDING";
+        token.role = (user as any).role;
+        token.status = (user as any).status;
       } else if (token.email) {
-        const u = await prisma.user.findUnique({ where: { email: String(token.email) } });
+        const u = await prisma.user.findUnique({
+          where: { email: token.email },
+          select: { id: true, role: true, status: true },
+        });
         if (u) {
           token.id = u.id;
-          token.role = u.role;
-          token.status = u.status;
+          token.role = u.role as Role;
+          token.status = u.status as UserStatus;
         }
       }
       return token;
     },
 
-    async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).role = token.role ?? "USER";
-        (session.user as any).status = token.status ?? "PENDING";
-      }
+    async session({ session, token }: any) {
+      session.user = {
+        ...(session.user || {}),
+        id: (token.id as string) ?? "",
+        role: (token.role as Role) ?? "USER",
+        status: (token.status as UserStatus) ?? "PENDING",
+      };
       return session;
     },
   },
-  debug: !isProd,
 };
 
-// Удобный хелпер для серверных компонентов / API
-export const auth = () => getServerSession(authOptions);
+// ──────────────────────────────────────────────────────────
+// УТИЛИТЫ ПОД v4, чтобы сохранилась старая структура проекта
+// ──────────────────────────────────────────────────────────
+
+// server-хелпер, как твоё прежнее auth()
+export function auth() {
+  return getServerSession(authOptions);
+}
+
+// shim "handlers" под v4 (для app/api/auth/[...nextauth])
+const nextAuthHandler = (NextAuth as any)(authOptions);
+export const handlers = { GET: nextAuthHandler, POST: nextAuthHandler };
+
+// re-export client helpers (если используешь в компонентах)
+export { signIn, signOut } from "next-auth/react";
