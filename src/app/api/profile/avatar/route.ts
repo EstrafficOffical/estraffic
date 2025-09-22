@@ -1,74 +1,99 @@
+// src/app/api/profile/avatar/route.ts
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { randomUUID } from "crypto";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
-export const runtime = "nodejs"; // нужен Node.js runtime (Buffer, formData и т.п.)
+export const runtime = "nodejs"; // нужен Node для Buffer/fs
 
+// ===== S3 (AWS / R2 / MinIO) =====
+async function putToS3(params: {
+  buf: Uint8Array;
+  mime: string;
+  key: string;
+}) {
+  const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
+
+  const region = process.env.S3_REGION || "auto";
+  const bucket = process.env.S3_BUCKET!;
+  const endpoint = process.env.S3_ENDPOINT || undefined;
+  const forcePathStyle = !!process.env.S3_FORCE_PATH_STYLE;
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID!;
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY!;
+  const aclPublicRead = (process.env.S3_ACL_PUBLIC_READ || "false") !== "false";
+  const publicBase = process.env.S3_PUBLIC_BASE_URL || "";
+
+  const s3 = new S3Client({
+    region,
+    endpoint,
+    forcePathStyle,
+    credentials: { accessKeyId, secretAccessKey },
+  });
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: params.key,
+      Body: params.buf,
+      ContentType: params.mime,
+      ...(aclPublicRead ? ({ ACL: "public-read" } as any) : {}),
+    })
+  );
+
+  // Публичный URL
+  if (publicBase) return `${publicBase.replace(/\/$/, "")}/${params.key}`;
+  if (endpoint) return `${endpoint.replace(/\/$/, "")}/${bucket}/${params.key}`;
+  return `https://${bucket}.s3.${region}.amazonaws.com/${params.key}`;
+}
+
+// ====== Загрузка аватара ======
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-
-  // По умолчанию в типах NextAuth нет user.id — достанем через каст.
-  const userId = (session?.user as { id?: string } | undefined)?.id;
-
-  if (!userId) {
+  const session = await auth();
+  if (!session?.user) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
+  const userId = (session.user as any).id as string;
 
   const form = await req.formData();
   const file = form.get("file") as File | null;
-
   if (!file) {
-    return NextResponse.json({ ok: false, error: "no_file" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "file is required" }, { status: 400 });
   }
 
-  const allow = ["image/jpeg", "image/png", "image/webp"] as const;
-  if (!allow.includes(file.type as any)) {
-    return NextResponse.json({ ok: false, error: "unsupported_type" }, { status: 415 });
-  }
+  const origName = file.name || "avatar.png";
+  const ext = (origName.split(".").pop() || "png").toLowerCase();
+  const mime = file.type || (ext === "jpg" ? "image/jpeg" : `image/${ext}`);
+  const bytes = new Uint8Array(await file.arrayBuffer()); // <— ключевое: Uint8Array
 
-  if (file.size > 2 * 1024 * 1024) {
-    return NextResponse.json({ ok: false, error: "too_large" }, { status: 413 });
-  }
+  const filename = `${userId}-${Date.now()}.${ext}`;
+  const key = `upload/avatars/${filename}`;
 
-  // Подберём расширение по MIME
-  const ext =
-    file.type === "image/png"
-      ? "png"
-      : file.type === "image/webp"
-      ? "webp"
-      : "jpg";
+  let publicUrl = "";
 
-  const key = `${userId}/${randomUUID()}.${ext}`;
-
-  try {
-    // Загрузка в Supabase Storage
-    const ab = await file.arrayBuffer();
-    const { error: upErr } = await supabaseAdmin
-      .storage
-      .from("avatars")
-      .upload(key, Buffer.from(ab), { contentType: file.type });
-
-    if (upErr) {
-      console.error("[avatar upload] supabase error:", upErr);
-      return NextResponse.json({ ok: false, error: "upload_failed" }, { status: 500 });
+  if ((process.env.AVATAR_STORAGE || "").toLowerCase() === "s3") {
+    try {
+      publicUrl = await putToS3({ buf: bytes, mime, key });
+    } catch (e) {
+      console.error("S3 upload failed", e);
+      return NextResponse.json({ ok: false, error: "s3 upload failed" }, { status: 500 });
     }
+  } else {
+    // ===== локальный файловый режим (VPS/докер) =====
+    const path = await import("node:path");
+    const fsp = await import("node:fs/promises");
 
-    // Публичная ссылка
-    const { data } = supabaseAdmin.storage.from("avatars").getPublicUrl(key);
-    const publicUrl = data.publicUrl;
+    const dir = path.join(process.cwd(), "public", "upload", "avatars");
+    await fsp.mkdir(dir, { recursive: true });
 
-    // Обновим картинку у пользователя (user.image — стандартное поле NextAuth)
-    await prisma.user.update({
-      where: { id: userId },
-      data: { image: publicUrl },
-    });
-
-    return NextResponse.json({ ok: true, url: publicUrl });
-  } catch (e) {
-    console.error("[avatar upload] server error:", e);
-    return NextResponse.json({ ok: false, error: "server_error" }, { status: 500 });
+    const fsPath = path.join(dir, filename);
+    await fsp.writeFile(fsPath, bytes); // <— пишем Uint8Array, TS доволен
+    publicUrl = `/upload/avatars/${filename}`;
   }
+
+  // сохранить URL в профиле
+  await prisma.user.update({
+    where: { id: userId },
+    data: { image: publicUrl },
+  });
+
+  return NextResponse.json({ ok: true, url: publicUrl });
 }

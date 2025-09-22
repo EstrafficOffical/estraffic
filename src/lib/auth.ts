@@ -1,99 +1,130 @@
 // src/lib/auth.ts
-import type { NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
-import AppleProvider from "next-auth/providers/apple";
-import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import prisma from "@/lib/prisma";
+import NextAuth, { type NextAuthOptions, getServerSession } from "next-auth";
+import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 
-/**
- * Собираем массив провайдеров динамически,
- * чтобы OAuth не падал при отсутствии ENV.
- */
-const providers: NextAuthOptions["providers"] = [];
+// У тебя prisma экспортируется ИМЕНОВАННО
+import { prisma } from "@/lib/prisma";
 
-// Google OAuth — только если заданы ENV
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  providers.push(
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    })
-  );
+// Типы ролей/статусов — под твою схему
+type Role = "USER" | "ADMIN";
+type UserStatus = "PENDING" | "APPROVED" | "BANNED";
+
+// Augmentation: чтобы TS знал, что кладём в session/jwt
+declare module "next-auth" {
+  interface User {
+    id: string;
+    role: Role;
+    status: UserStatus;
+    name?: string | null;
+  }
+  interface Session {
+    user: {
+      id: string;
+      email?: string | null;
+      name?: string | null;
+      role: Role;
+      status: UserStatus;
+      image?: string | null;
+    };
+  }
 }
-
-// Apple OAuth (по желанию; можно закомментировать, если пока не используешь)
-if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET) {
-  providers.push(
-    AppleProvider({
-      clientId: process.env.APPLE_CLIENT_ID!,
-      clientSecret: process.env.APPLE_CLIENT_SECRET!,
-    })
-  );
+declare module "next-auth/jwt" {
+  interface JWT {
+    id?: string;
+    role?: Role;
+    status?: UserStatus;
+  }
 }
-
-// Credentials (email + password)
-providers.push(
-  CredentialsProvider({
-    name: "Credentials",
-    credentials: {
-      email: { label: "Email", type: "email" },
-      password: { label: "Password", type: "password" },
-    },
-    async authorize(credentials) {
-      const email = credentials?.email?.trim().toLowerCase();
-      const password = credentials?.password ?? "";
-
-      if (!email || !password) return null;
-
-      const user = await prisma.user.findUnique({
-        where: { email },
-      });
-
-      if (!user || !user.passwordHash) return null;
-
-      const ok = await bcrypt.compare(password, user.passwordHash);
-      if (!ok) return null;
-
-      return {
-        id: user.id,
-        email: user.email,
-        name: user.name ?? undefined,
-        // любые доп. поля можно добавить в JWT колбэке
-        role: (user as any).role ?? "USER",
-      } as any;
-    },
-  })
-);
 
 export const authOptions: NextAuthOptions = {
-  // Приводим тип адаптера, чтобы удовлетворить TS даже при разночтениях версий
   adapter: PrismaAdapter(prisma) as any,
-
   session: { strategy: "jwt" },
+  secret: process.env.NEXTAUTH_SECRET,
 
-  providers,
+  providers: [
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+      allowDangerousEmailAccountLinking: true,
+    }),
 
-  pages: {
-    // можешь переопределить свои страницы, если нужно
-    // signIn: "/ru/login"
-  },
+    Credentials({
+      name: "Email & Password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      authorize: async (creds) => {
+        const email = (creds?.email ?? "").trim().toLowerCase();
+        const password = creds?.password ?? "";
+        if (!email || !password) return null;
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user?.passwordHash) return null;
+
+        const ok = await bcrypt.compare(password, user.passwordHash);
+        if (!ok) return null;
+        if (user.status === "BANNED") return null;
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role as Role,
+          status: user.status as UserStatus,
+        };
+      },
+    }),
+  ],
 
   callbacks: {
-    async jwt({ token, user }) {
+    // any — чтобы не бодаться с версиями типов
+    async jwt({ token, user }: any) {
       if (user) {
         token.id = (user as any).id;
-        token.role = (user as any).role ?? "USER";
+        token.role = (user as any).role;
+        token.status = (user as any).status;
+      } else if (token.email) {
+        const u = await prisma.user.findUnique({
+          where: { email: token.email },
+          select: { id: true, role: true, status: true },
+        });
+        if (u) {
+          token.id = u.id;
+          token.role = u.role as Role;
+          token.status = u.status as UserStatus;
+        }
       }
       return token;
     },
-    async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).role = token.role ?? "USER";
-      }
+
+    async session({ session, token }: any) {
+      session.user = {
+        ...(session.user || {}),
+        id: (token.id as string) ?? "",
+        role: (token.role as Role) ?? "USER",
+        status: (token.status as UserStatus) ?? "PENDING",
+      };
       return session;
     },
   },
 };
+
+// ──────────────────────────────────────────────────────────
+// УТИЛИТЫ ПОД v4, чтобы сохранилась старая структура проекта
+// ──────────────────────────────────────────────────────────
+
+// server-хелпер, как твоё прежнее auth()
+export function auth() {
+  return getServerSession(authOptions);
+}
+
+// shim "handlers" под v4 (для app/api/auth/[...nextauth])
+const nextAuthHandler = (NextAuth as any)(authOptions);
+export const handlers = { GET: nextAuthHandler, POST: nextAuthHandler };
+
+// re-export client helpers (если используешь в компонентах)
+export { signIn, signOut } from "next-auth/react";

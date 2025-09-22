@@ -1,0 +1,1 @@
+﻿ALTER TABLE "Offer" ADD COLUMN IF NOT EXISTS "targetUrl" TEXT;

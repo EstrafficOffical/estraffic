@@ -1,102 +1,153 @@
 // src/app/api/postbacks/ingest/route.ts
-import prisma from "@/lib/prisma";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { prisma } from "@/lib/prisma";
 import type { ConversionType } from "@prisma/client";
 
-// Безопасный геттер параметров
-function pick(params: URLSearchParams, key: string) {
-  const v = params.get(key);
-  return v == null || v === "" ? undefined : v;
+// Важно: Нужен Node-рантайм (а не edge), чтобы работали Buffer/crypto.
+export const runtime = "nodejs";
+
+/** Секрет берём из .env */
+const SERVER_SECRET = process.env.POSTBACK_SHARED_SECRET ?? "";
+
+/** Маппинг event → Prisma enum */
+function toConvType(ev?: string | null): ConversionType | null {
+  const v = (ev ?? "").toUpperCase();
+  if (v === "REG") return "REG";
+  if (v === "DEP" || v === "DEPOSIT") return "DEP";
+  if (v === "REBILL") return "REBILL";
+  if (v === "SALE" || v === "PURCHASE") return "SALE";
+  if (v === "LEAD") return "LEAD";
+  return null;
 }
 
-// Пробуем восстановить offerId и userId по click_id из таблицы кликов
-async function guessFromClick(clickId?: string) {
-  if (!clickId) {
-    return { offerId: null as string | null, userId: null as string | null };
+/** Тайминг-безопасное сравнение двух hex-строк */
+function safeEqualHex(aHex: string, bHex: string): boolean {
+  try {
+    const a = Buffer.from(aHex, "hex");
+    const b = Buffer.from(bHex, "hex");
+    if (a.length !== b.length) return false;
+    // Преобразуем к ArrayBufferView, чтобы удовлетворить TS-тайпинги
+    const av = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+    const bv = new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+    return timingSafeEqual(av, bv);
+  } catch {
+    return false;
   }
-  const click = await prisma.click.findFirst({
-    where: { clickId },
-    select: { offerId: true, userId: true },
-  });
-  return { offerId: click?.offerId ?? null, userId: click?.userId ?? null };
 }
 
-export async function GET(req: Request) { return handle(req); }
-export async function POST(req: Request) { return handle(req); }
+/** Верификация подписи (если передана) или поля secret */
+function verifyAuth(rawBody: string, jsonSecret?: string | null, headerSig?: string | null): boolean {
+  if (!SERVER_SECRET) return false;
 
-async function handle(req: Request) {
-  const url = new URL(req.url);
-  const isGet = req.method === "GET";
-  const params = new URLSearchParams(isGet ? url.search : "");
+  // Если есть HMAC-подпись — проверяем её приоритетно
+  if (headerSig && headerSig.length >= 16) {
+    const expected = createHmac("sha256", SERVER_SECRET).update(rawBody).digest("hex");
+    return safeEqualHex(headerSig, expected);
+  }
+  // Иначе проверяем секрет в самом JSON
+  return typeof jsonSecret === "string" && safeEqualHex(jsonSecret, Buffer.from(SERVER_SECRET).toString("hex"));
+}
 
-  // Если POST — поддерживаем JSON и x-www-form-urlencoded; иначе fallback к query
-  if (!isGet) {
-    const ct = req.headers.get("content-type") || "";
-    if (ct.includes("application/json")) {
-      const body = await req.json().catch(() => ({}));
-      Object.entries(body || {}).forEach(([k, v]) => params.set(k, String(v)));
-    } else if (ct.includes("application/x-www-form-urlencoded")) {
-      const body = await req.text();
-      new URLSearchParams(body).forEach((v, k) => params.set(k, v));
-    } else {
-      url.searchParams.forEach((v, k) => params.set(k, v));
-    }
+/** Общая логика обработки запроса */
+async function handle(body: any, rawBody: string, req: NextRequest) {
+  // Авторизация: либо X-Signature, либо { secret }
+  const headerSig = req.headers.get("x-signature");
+  if (!verifyAuth(rawBody, body?.secret, headerSig)) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const clickId   = pick(params, "click_id") ?? pick(params, "subid") ?? pick(params, "sub1");
-  const offerIdRaw = pick(params, "offer_id");
-  const amount    = pick(params, "amount");
-  const currency  = pick(params, "currency") ?? "USD";
-  const txId      = pick(params, "tx_id");
-  const rawStatus = (pick(params, "event") ?? pick(params, "status") ?? "REG").toUpperCase();
-
-  // Приводим статус к вашему enum ConversionType
-  const allowed = new Set<ConversionType>(["REG", "DEP", "REBILL", "SALE", "LEAD"] as any);
-  const status  = (allowed.has(rawStatus as any) ? rawStatus : "REG") as ConversionType;
-
-  // Пробуем дотянуть offerId/userId по click_id, если offer_id не пришёл
-  const { offerId: guessedOfferId, userId: guessedUserId } = await guessFromClick(clickId);
-  const effectiveOfferId = offerIdRaw ?? guessedOfferId;
-
-  if (!effectiveOfferId) {
-    return NextResponse.json(
-      { ok: false, error: "Missing offer_id and unable to resolve from click_id" },
-      { status: 400 }
-    );
+  const offerId = String(body?.offer_id ?? "").trim();
+  const txId = String(body?.tx_id ?? "").trim();
+  if (!offerId || !txId) {
+    return NextResponse.json({ ok: false, error: "offer_id and tx_id are required" }, { status: 400 });
   }
 
-  // Проверим, что оффер существует (иначе 400)
-  const offer = await prisma.offer.findUnique({ where: { id: effectiveOfferId } });
-  if (!offer) {
-    return NextResponse.json(
-      { ok: false, error: `Unknown offer_id: ${effectiveOfferId}` },
-      { status: 400 }
-    );
-  }
+  const convType = toConvType(body?.event ?? null);
+  const amount = body?.amount != null ? Number(body.amount) : null;
+  const currency = body?.currency ? String(body.currency) : null;
+  const subId = body?.subId ? String(body.subId) : null;
+  const clickId = body?.clickId ? String(body.clickId) : null;
 
-  // Мягкая дедупликация: если пришёл tx_id и уже есть такая запись — вернём существующий id
-  if (txId) {
-    const existed = await prisma.conversion.findFirst({
-      where: { offerId: offer.id, txId },
-      select: { id: true },
+  // Пытаемся найти userId по последнему клику (subId/clickId)
+  let userId: string | null = null;
+  if (subId || clickId) {
+    const lastClick = await prisma.click.findFirst({
+      where: {
+        offerId: offerId,
+        OR: [
+          subId ? { subId } : undefined,
+          clickId ? { clickId } : undefined,
+        ].filter(Boolean) as any,
+      },
+      orderBy: { createdAt: "desc" },
+      select: { userId: true },
     });
-    if (existed) {
-      return NextResponse.json({ ok: true, id: existed.id, dedup: true });
-    }
+    userId = lastClick?.userId ?? null;
   }
 
-  // Создаём конверсию
-  const conv = await prisma.conversion.create({
-    data: {
-      userId: guessedUserId,           // подтянули из клика (если было)
-      offerId: offer.id,               // гарантированно валиден
-      subId: clickId ?? null,          // обычно сюда кладут click_id/subid
-      type: status,                    // REG/DEP/SALE/LEAD/REBILL
-      amount: amount ? Number(amount) : null,
-      currency,
-      txId: txId ?? null,
+  // Идемпотентный upsert по (offerId, txId)
+  const saved = await prisma.conversion.upsert({
+    where: { offerId_txId: { offerId, txId } },
+    update: {
+      userId,
+      type: convType ?? undefined,
+      amount: amount ?? undefined,
+      currency: currency ?? undefined,
     },
+    create: {
+      offerId,
+      txId,
+      userId,
+      type: convType ?? "REG",
+      amount: amount,
+      currency: currency,
+      subId: subId ?? undefined,
+      // createdAt проставится по default(now())
+    },
+    select: { id: true, offerId: true, txId: true },
   });
 
-  return NextResponse.json({ ok: true, id: conv.id });
+  return NextResponse.json({ ok: true, id: saved.id });
+}
+
+/** POST — основной путь (используем сырой body для HMAC) */
+export async function POST(req: NextRequest) {
+  try {
+    const raw = await req.text();
+    let data: any;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return NextResponse.json({ ok: false, error: "invalid json" }, { status: 400 });
+    }
+    return await handle(data, raw, req);
+  } catch (e) {
+    console.error("POST /postbacks/ingest error", e);
+    return NextResponse.json({ ok: false, error: "internal" }, { status: 500 });
+  }
+}
+
+/** GET — вспомогательный для отладки (параметры в query) */
+export async function GET(req: NextRequest) {
+  try {
+    const u = new URL(req.url);
+    const params = u.searchParams;
+    const body = {
+      secret: params.get("secret"),
+      offer_id: params.get("offer_id"),
+      tx_id: params.get("tx_id"),
+      event: params.get("event"),
+      amount: params.get("amount") ? Number(params.get("amount")) : undefined,
+      currency: params.get("currency"),
+      subId: params.get("subId"),
+      clickId: params.get("clickId"),
+    };
+    // Для HMAC при GET берём «сырой» аналог — строку query без подписи (условно)
+    const raw = JSON.stringify(body);
+    return await handle(body, raw, req);
+  } catch (e) {
+    console.error("GET /postbacks/ingest error", e);
+    return NextResponse.json({ ok: false, error: "internal" }, { status: 500 });
+  }
 }

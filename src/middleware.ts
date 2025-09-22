@@ -1,45 +1,50 @@
-// middleware.ts
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import createIntlMiddleware from "next-intl/middleware";
 import { withAuth } from "next-auth/middleware";
-import createMiddleware from "next-intl/middleware";
-import { locales, defaultLocale, localePrefix } from "@/lib/i18n";
 
-// i18n middleware
-const intlMiddleware = createMiddleware({
-  locales,
+const locales = ["ru", "en", "uk"] as const;
+const defaultLocale = "ru";
+
+const intl = createIntlMiddleware({
+  locales: locales as unknown as string[],
   defaultLocale,
-  localePrefix,
+  localePrefix: "always",
 });
 
-// auth middleware (для админки)
-const adminAuthMiddleware = withAuth({
-  callbacks: {
-    authorized: ({ token }) => token?.role === "ADMIN",
-  },
-});
+const adminAuth = withAuth(
+  () => NextResponse.next(),
+  { callbacks: { authorized: ({ token }) => token?.role === "ADMIN" } }
+);
 
-export default function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-
-  // проверяем админские пути
-  const isAdminPath =
-    /^\/(ru|uk|en)\/admin(\/|$)/.test(pathname) ||
-    pathname === "/api/offers/create" ||
-    pathname.startsWith("/api/offers/create");
-
-  if (isAdminPath) {
-    // тут ВАЖНО — вызвать как функцию объекта
-    return (adminAuthMiddleware as any)(req);
-  }
-
-  return intlMiddleware(req);
+function isAdminPath(pathname: string) {
+  return /^\/(ru|en|uk)\/admin(\/|$)/.test(pathname);
 }
 
-export const config = {
-  matcher: [
-    "/",                      
-    "/(ru|uk|en)/:path*",     
-    "/api/offers/create",     
-    "/(ru|uk|en)/admin/:path*"
-  ],
-};
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // 1) Никогда не трогаем тех-пути: критично для /api/auth/callback/google!
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/_next/") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/site.webmanifest" ||
+    pathname.endsWith(".png") ||
+    pathname.endsWith(".jpg") ||
+    pathname.endsWith(".svg") ||
+    pathname.endsWith(".ico") ||
+    pathname.endsWith(".txt") ||
+    pathname.startsWith("/robots") ||
+    pathname.startsWith("/sitemap")
+  ) {
+    return NextResponse.next();
+  }
+
+  // 2) Админка — только ADMIN
+  if (isAdminPath(pathname)) return (adminAuth as any)(req);
+
+  // 3) Остальное — i18n
+  return intl(req);
+}
+
+export const config = { matcher: ["/:path*"] };
