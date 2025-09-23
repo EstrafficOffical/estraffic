@@ -1,5 +1,6 @@
-import DashboardHome from "@/app/components/DashboardHome";
+// редиректим с корня на дефолтную локаль
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <DashboardHome />;
+  redirect("/ru");
 }
