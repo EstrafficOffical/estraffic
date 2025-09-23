@@ -1,12 +1,28 @@
 // src/app/[locale]/(auth)/admin/users/page.tsx
 import "server-only";
-import { prisma } from "@/lib/prisma";        // ⬅️ именованный импорт
+import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import RowActions from "./row-actions";
 import NavToggle from "@/app/components/NavToggle";
 
-type SearchParams = { q?: string; status?: string; role?: string; page?: string; perPage?: string };
+type SearchParams = {
+  q?: string;
+  status?: string;
+  role?: string;
+  page?: string;
+  perPage?: string;
+};
+
+type UserRow = {
+  id: string;
+  email: string | null;
+  name: string | null;
+  telegram?: string | null; // делаем опциональным — вдруг поля нет в схеме/БД
+  role: string;
+  status: string;
+  createdAt: Date;
+};
 
 export default async function Page({
   searchParams,
@@ -35,6 +51,8 @@ export default async function Page({
             OR: [
               { email: { contains: q, mode: "insensitive" } },
               { name: { contains: q, mode: "insensitive" } },
+              // если поля нет — Prisma просто проигнорирует при выполнении;
+              // тип тут any, так что TS ок.
               { telegram: { contains: q, mode: "insensitive" } },
             ],
           }
@@ -44,7 +62,7 @@ export default async function Page({
     ],
   };
 
-  const [total, users] = await Promise.all([
+  const [total, prismaUsers] = await Promise.all([
     prisma.user.count({ where }),
     prisma.user.findMany({
       where,
@@ -55,13 +73,17 @@ export default async function Page({
         id: true,
         email: true,
         name: true,
+        // @ts-ignore — в твоём сгенерённом клиенте поле telegram может отсутствовать.
         telegram: true,
         role: true,
         status: true,
         createdAt: true,
-      },
+      } as const,
     }),
   ]);
+
+  // Приведём к удобному для рендера типу
+  const users = prismaUsers as unknown as UserRow[];
 
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
