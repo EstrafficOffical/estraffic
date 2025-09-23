@@ -1,12 +1,23 @@
 // src/lib/prisma.ts
 import { PrismaClient } from "@prisma/client";
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+declare global {
+  // allow global `var` declarations
+  // eslint-disable-next-line no-var
+  var __prisma__: PrismaClient | undefined;
+}
 
-export const prisma =
-  globalForPrisma.prisma ??
+// ОДИН синглтон на всё приложение (и dev, и prod)
+export const prisma: PrismaClient =
+  global.__prisma__ ??
   new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    // логирование по вкусу:
+    // log: ["query", "error", "warn"],
   });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+if (process.env.NODE_ENV !== "production") {
+  global.__prisma__ = prisma;
+}
+
+// ВАЖНО: делаем ещё и default-экспорт, чтобы работали импорты вида `import prisma from "@/lib/prisma"`
+export default prisma;

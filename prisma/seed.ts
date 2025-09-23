@@ -1,34 +1,41 @@
 // prisma/seed.ts
 import { PrismaClient, OfferMode } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import * as bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log("--- SEED START ---");
 
-  // 1) Админ
+  // 1) Админ-аккаунт
   const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? "12");
   const passwordHash = await bcrypt.hash("admin12345", saltRounds);
 
-  // определим имя поля пароля в твоей схеме: passwordHash или password
-  // @ts-ignore — на этапе компиляции поля может не быть в типах, но в рантайме всё ок
-  const passwordField: "passwordHash" | "password" =
-    "passwordHash" in (prisma.user as any)._dmmf.modelMap.User.fieldsByName
-      ? "passwordHash"
-      : "password";
+  // формируем данные с безопасным кастом, чтобы TS не ругался на role/status
+  const adminUpdate: any = {
+    name: "Ihor",
+    passwordHash,
+    role: "ADMIN",          // если в схеме enum Role — ок; если строки — тоже ок
+    status: "APPROVED",     // если в схеме enum UserStatus — ок; если строки — ок
+  };
+
+  const adminCreate: any = {
+    name: "Ihor",
+    email: "ihortkach80@gmail.com",
+    passwordHash,
+    role: "ADMIN",
+    status: "APPROVED",
+  };
 
   const admin = await prisma.user.upsert({
     where: { email: "ihortkach80@gmail.com" },
-    update: { name: "Ihor", [passwordField]: passwordHash } as any,
-    create: { name: "Ihor", email: "ihortkach80@gmail.com", [passwordField]: passwordHash } as any,
+    update: adminUpdate,
+    create: adminCreate,
   });
 
   console.log("✅ user upserted:", admin.id, admin.email);
 
-  // 2) Офферы
-  // Если у тебя enum называется иначе (например, MODE вместо OfferMode),
-  // поменяй ниже на свой enum. По умолчанию OfferMode.Auto / OfferMode.Manual ок.
+  // 2) Офферы (skipDuplicates — чтобы сид можно было гонять повторно)
   await prisma.offer.createMany({
     data: [
       {
@@ -62,37 +69,41 @@ async function main() {
         mode: OfferMode.Auto,
       },
     ],
-    // пропустим дубликаты, если сид запускается повторно
     skipDuplicates: true,
   });
   console.log("✅ offers seeded");
 
-  // 3) Кошелек: аккуратно, без требования уникального userId
+  // 3) Кошелёк (в твоей модели НЕТ поля chain — не используем его)
   const walletAddress = "TKei3JyHDbgEVZrYYd2uuMXwMHy7H2gN7X";
-  const walletChain = "tron";
 
   const existingWallet = await prisma.wallet.findFirst({
-    where: { userId: admin.id, chain: walletChain },
+    where: { userId: admin.id, address: walletAddress },
   });
 
   if (existingWallet) {
     await prisma.wallet.update({
       where: { id: existingWallet.id },
-      data: { address: walletAddress, verified: false },
+      data: {
+        label: existingWallet.label ?? "Primary",
+        address: walletAddress,
+        isPrimary: true,
+        verified: false,
+      },
     });
   } else {
     await prisma.wallet.create({
       data: {
         userId: admin.id,
+        label: "Primary",
         address: walletAddress,
-        chain: walletChain,
+        isPrimary: true,
         verified: false,
       },
     });
   }
   console.log("✅ wallet upserted");
 
-  // 4) Выплата (создадим, если нет)
+  // 4) Пример выплаты
   const existingPayout = await prisma.payout.findFirst({
     where: { userId: admin.id, amount: 50, currency: "USDT" },
   });
@@ -103,6 +114,7 @@ async function main() {
         userId: admin.id,
         amount: 50,
         currency: "USDT",
+        // если status обязателен в схеме Payout — добавь нужное значение здесь
       },
     });
     console.log("✅ payout created");
