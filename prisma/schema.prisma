@@ -30,6 +30,10 @@ model User {
   offerAccesses OfferAccess[]
   offerRequests OfferRequest[]
 }
+enum Role {
+  USER
+  ADMIN
+}
 
 model Account {
   id                String  @id @default(cuid())

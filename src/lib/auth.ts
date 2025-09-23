@@ -4,8 +4,6 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
-
-// У тебя prisma экспортируется ИМЕНОВАННО
 import { prisma } from "@/lib/prisma";
 
 // Типы ролей/статусов — под твою схему
@@ -43,6 +41,13 @@ export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
   session: { strategy: "jwt" },
   secret: process.env.NEXTAUTH_SECRET,
+  // ВАЖНО: указываем свою страницу входа (русская локаль по умолчанию).
+  // Если нужны другие локали — можно подставлять динамически через middleware,
+  // но для устранения текущего редиректа этого достаточно.
+  pages: {
+    signIn: "/ru/login",
+    error: "/ru/login",
+  },
 
   providers: [
     Google({
@@ -81,7 +86,6 @@ export const authOptions: NextAuthOptions = {
   ],
 
   callbacks: {
-    // any — чтобы не бодаться с версиями типов
     async jwt({ token, user }: any) {
       if (user) {
         token.id = (user as any).id;
@@ -114,7 +118,7 @@ export const authOptions: NextAuthOptions = {
 };
 
 // ──────────────────────────────────────────────────────────
-// УТИЛИТЫ ПОД v4, чтобы сохранилась старая структура проекта
+// Утилиты под v4 (App Router)
 // ──────────────────────────────────────────────────────────
 
 // server-хелпер, как твоё прежнее auth()
@@ -122,9 +126,9 @@ export function auth() {
   return getServerSession(authOptions);
 }
 
-// shim "handlers" под v4 (для app/api/auth/[...nextauth])
+// хендлеры для app/api/auth/[...nextauth]
 const nextAuthHandler = (NextAuth as any)(authOptions);
 export const handlers = { GET: nextAuthHandler, POST: nextAuthHandler };
 
-// re-export client helpers (если используешь в компонентах)
+// re-export client helpers
 export { signIn, signOut } from "next-auth/react";
