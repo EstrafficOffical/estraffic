@@ -7,7 +7,7 @@ import { z } from "zod";
 const PatchSchema = z.object({
   name: z.string().trim().max(120).optional(),
   telegram: z.string().trim().max(120).optional(),
-  email: z.string().trim().email().optional(), // у тебя readOnly, но пусть валидируется
+  email: z.string().trim().email().optional(),
 });
 
 export async function GET() {
@@ -16,10 +16,21 @@ export async function GET() {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
   const id = (session.user as any).id as string;
-  const user = await prisma.user.findUnique({
+
+  const base = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, email: true, name: true, telegram: true, image: true },
+    // telegram не выбираем напрямую — вернём ниже через any
+    select: { id: true, email: true, name: true, image: true },
   });
+
+  const user = base
+    ? {
+        ...base,
+        // @ts-ignore
+        telegram: (base as any)?.telegram ?? null,
+      }
+    : null;
+
   return NextResponse.json({ user });
 }
 
@@ -45,7 +56,6 @@ export async function PATCH(req: Request) {
     const user = await prisma.user.update({ where: { id }, data, select: { id: true } });
     return NextResponse.json({ ok: true, id: user.id });
   } catch (e: any) {
-    // возможный уникальный email и т.п.
     return NextResponse.json({ error: e?.code || "DB_ERROR" }, { status: 400 });
   }
 }

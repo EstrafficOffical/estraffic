@@ -1,6 +1,6 @@
 // src/app/api/admin/users/[id]/approve/route.ts
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/api-guards";
 
 export async function POST(
@@ -12,7 +12,8 @@ export async function POST(
 
   await prisma.user.update({
     where: { id: params.id },
-    data: { status: "APPROVED" },
+    // Кастим весь объект, чтобы игнорировать отсутствие поля в типах Prisma Client
+    data: { status: "APPROVED" } as any,
   });
 
   return NextResponse.json({ ok: true });

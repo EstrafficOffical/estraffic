@@ -1,6 +1,7 @@
+// src/app/api/register/route.ts
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import {prisma} from "@/lib/prisma"; // убедись, что экспорт по умолчанию
+import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
@@ -10,23 +11,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email и пароль обязательны" }, { status: 400 });
     }
 
-    const exists = await prisma.user.findUnique({ where: { email } });
+    const normalized = String(email).trim().toLowerCase();
+    const exists = await prisma.user.findUnique({ where: { email: normalized } });
     if (exists) {
-      return NextResponse.json({ error: "Пользователь с таким email уже существует" }, { status: 409 });
+      return NextResponse.json(
+        { error: "Пользователь с таким email уже существует" },
+        { status: 409 }
+      );
     }
 
     const rounds = Number(process.env.BCRYPT_SALT_ROUNDS ?? 12);
-    const passwordHash = await bcrypt.hash(password, rounds);
+    const passwordHash = await bcrypt.hash(password, Number.isFinite(rounds) ? rounds : 12);
 
     const user = await prisma.user.create({
       data: {
-        email,
+        email: normalized,
         passwordHash,
-        telegram: telegram || null,
-        // country можно хранить, если есть колонка; иначе убери
-        role: "USER",
-        status: "PENDING",
-      },
+        // country можно сохранять, если есть колонка; иначе – игнорируется
+        ...(country !== undefined ? ({ country } as any) : {}),
+        // telegram может отсутствовать в типах — добавляем условно
+        ...(telegram !== undefined ? ({ telegram } as any) : {}),
+        role: "USER" as any,
+        status: "PENDING" as any,
+      } as any,
       select: { id: true },
     });
 

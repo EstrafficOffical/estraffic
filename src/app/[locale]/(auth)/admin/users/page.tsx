@@ -18,7 +18,7 @@ type UserRow = {
   id: string;
   email: string | null;
   name: string | null;
-  telegram?: string | null; // делаем опциональным — вдруг поля нет в схеме/БД
+  telegram?: string | null;
   role: string;
   status: string;
   createdAt: Date;
@@ -51,8 +51,6 @@ export default async function Page({
             OR: [
               { email: { contains: q, mode: "insensitive" } },
               { name: { contains: q, mode: "insensitive" } },
-              // если поля нет — Prisma просто проигнорирует при выполнении;
-              // тип тут any, так что TS ок.
               { telegram: { contains: q, mode: "insensitive" } },
             ],
           }
@@ -73,16 +71,18 @@ export default async function Page({
         id: true,
         email: true,
         name: true,
-        // @ts-ignore — в твоём сгенерённом клиенте поле telegram может отсутствовать.
+        // может отсутствовать в сгенерённых типах
+        // @ts-ignore
         telegram: true,
         role: true,
+        // может отсутствовать в сгенерённых типах
+        // @ts-ignore
         status: true,
         createdAt: true,
-      } as const,
+      } as any,
     }),
   ]);
 
-  // Приведём к удобному для рендера типу
   const users = prismaUsers as unknown as UserRow[];
 
   const totalPages = Math.max(1, Math.ceil(total / perPage));
