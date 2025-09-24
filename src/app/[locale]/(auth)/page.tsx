@@ -1,7 +1,6 @@
+// редирект внутрь роут-группы на форму логина
 import { redirect } from "next/navigation";
 
-export default function AuthIndex({
-  params: { locale },
-}: { params: { locale: string } }) {
-  redirect(`/${locale}/login`);
+export default function Page({ params }: { params: { locale: string } }) {
+  redirect(`/${params.locale}/login`);
 }
