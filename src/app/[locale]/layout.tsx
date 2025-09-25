@@ -1,3 +1,4 @@
+// src/app/[locale]/layout.tsx
 import type { ReactNode } from "react";
 import LocaleProvider from "@/app/i18n/LocaleProvider";
 import AuthSessionProvider from "@/app/providers/AuthSessionProvider";
@@ -7,7 +8,15 @@ import ru from "@/app/i18n/messages/ru.json";
 import en from "@/app/i18n/messages/en.json";
 import uk from "@/app/i18n/messages/uk.json";
 
-const dictionaries: Record<string, any> = { ru, en, uk };
+const SUPPORTED = ["ru", "en", "uk"] as const;
+type SupportedLocale = (typeof SUPPORTED)[number];
+
+const DICTS: Record<SupportedLocale, any> = { ru, en, uk };
+
+function normalizeLocale(raw?: string): SupportedLocale {
+  const s = (raw ?? "").toLowerCase();
+  return (SUPPORTED as readonly string[]).includes(s) ? (s as SupportedLocale) : "ru";
+}
 
 export default function LocaleLayout({
   children,
@@ -16,14 +25,12 @@ export default function LocaleLayout({
   children: ReactNode;
   params: { locale: string };
 }) {
-  const locale = params.locale ?? "ru";
-  const messages = dictionaries[locale] ?? dictionaries.ru;
+  const locale = normalizeLocale(params?.locale);
+  const messages = DICTS[locale];
 
   return (
     <LocaleProvider locale={locale} messages={messages}>
-      <AuthSessionProvider>
-        {children}
-      </AuthSessionProvider>
+      <AuthSessionProvider>{children}</AuthSessionProvider>
     </LocaleProvider>
   );
 }
