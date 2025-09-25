@@ -65,28 +65,52 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      authorize: async (creds) => {
-        const email = (creds?.email ?? "").trim().toLowerCase();
-        const password = creds?.password ?? "";
-        if (!email || !password) return null;
+      async authorize(creds) {
+        try {
+          const email = (creds?.email ?? "").trim().toLowerCase();
+          const password = creds?.password ?? "";
+          console.log("authorize: input", email);
 
-        // без select — пусть Prisma вернёт все поля,
-        // так TS не будет спорить про наличие role/status
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user?.passwordHash) return null;
+          if (!email || !password) return null;
 
-        const ok = await bcrypt.compare(password, user.passwordHash);
-        if (!ok) return null;
-        if ((user as any).status === "BANNED") return null;
+          // Берём все поля, чтобы не спорить с типами
+          const user = await prisma.user.findUnique({ where: { email } });
+          console.log(
+            "authorize: user",
+            !!user,
+            (user as any)?.status,
+            (user as any)?.role
+          );
+          if (!user?.passwordHash) return null;
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image ?? null,
-          role: (user as any).role as Role,
-          status: (user as any).status as UserStatus,
-        };
+          // Если используешь статусы — не пускаем забаненных/неаппрувнутых
+          const status = (user as any).status as UserStatus | undefined;
+          if (status === "BANNED") {
+            console.log("authorize: banned");
+            return null;
+          }
+          // Если хочешь пускать только APPROVED — раскомментируй:
+          // if (status && status !== "APPROVED") {
+          //   console.log("authorize: not approved", status);
+          //   return null;
+          // }
+
+          const ok = await bcrypt.compare(password, user.passwordHash);
+          console.log("authorize: password ok?", ok);
+          if (!ok) return null;
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image: user.image ?? null,
+            role: ((user as any).role ?? "USER") as Role,
+            status: ((user as any).status ?? "PENDING") as UserStatus,
+          } as any;
+        } catch (e) {
+          console.error("authorize error", e);
+          return null;
+        }
       },
     }),
   ],
@@ -104,17 +128,21 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
-      // Последующие запросы — подтягиваем актуальные поля из БД
+      // Последующие запросы — можно подтягивать актуальные поля
       if (token.email) {
-        const u = await prisma.user.findUnique({
-          where: { email: token.email },
-        });
-        if (u) {
-          token.id = u.id;
-          token.role = (u as any).role as Role;
-          token.status = (u as any).status as UserStatus;
-          token.name = u.name ?? token.name;
-          token.picture = u.image ?? token.picture;
+        try {
+          const u = await prisma.user.findUnique({
+            where: { email: token.email },
+          });
+          if (u) {
+            token.id = u.id;
+            token.role = ((u as any).role ?? token.role) as Role;
+            token.status = ((u as any).status ?? token.status) as UserStatus;
+            token.name = u.name ?? token.name;
+            token.picture = u.image ?? token.picture;
+          }
+        } catch (e) {
+          console.error("jwt callback fetch user error", e);
         }
       }
 
@@ -128,8 +156,8 @@ export const authOptions: NextAuthOptions = {
         email: (token.email as string) ?? session.user?.email ?? null,
         name: (token.name as string) ?? session.user?.name ?? null,
         image: (token.picture as string) ?? session.user?.image ?? null,
-        role: (token.role as Role) ?? "USER",
-        status: (token.status as UserStatus) ?? "PENDING",
+        role: ((token.role as Role) ?? "USER") as Role,
+        status: ((token.status as UserStatus) ?? "PENDING") as UserStatus,
       };
       return session;
     },
