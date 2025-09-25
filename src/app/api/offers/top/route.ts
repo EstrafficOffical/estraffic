@@ -1,5 +1,8 @@
 import prisma from "@/lib/prisma";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const runtime = 'nodejs'; 
 export async function GET() {
   // Берём без select, чтобы не упираться в расхождения схемы
   const rows = await prisma.offer.findMany({
