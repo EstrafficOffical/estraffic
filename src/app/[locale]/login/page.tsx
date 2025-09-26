@@ -20,10 +20,8 @@ export default function LoginPage({ params }: { params: { locale: string } }) {
     const email = String(fd.get("email") || "");
     const password = String(fd.get("password") || "");
 
-    // если есть callbackUrl в URL — используем его, иначе шлём на главную локали
     const callbackUrl = qs.get("callbackUrl") || `/${locale}`;
 
-    // даём NextAuth самому сделать редирект
     await signIn("credentials", {
       email,
       password,
@@ -31,12 +29,9 @@ export default function LoginPage({ params }: { params: { locale: string } }) {
       callbackUrl,
     });
 
-    // при успехе NextAuth сам редиректит
-    // при ошибке вернёт на эту же страницу с ?error=..., отобразим её ниже
     setSubmitting(false);
   }
 
-  // текст ошибки из URL (например, CredentialsSignin)
   const urlError = qs.get("error");
   const mergedError =
     error ||
@@ -59,7 +54,6 @@ export default function LoginPage({ params }: { params: { locale: string } }) {
   return (
     <div className="min-h-screen px-4 py-10 text-white/90">
       <div className="mx-auto w-full max-w-2xl">
-        {/* переключатели */}
         <div className="mb-6 flex gap-3">
           <a
             href={`/${locale}/login`}
@@ -68,10 +62,7 @@ export default function LoginPage({ params }: { params: { locale: string } }) {
           >
             Войти
           </a>
-          <a
-            href={`/${locale}/register`}
-            className={`${btnPrimary}`}
-          >
+          <a href={`/${locale}/register`} className={`${btnPrimary}`}>
             Регистрация
           </a>
         </div>
@@ -104,9 +95,7 @@ export default function LoginPage({ params }: { params: { locale: string } }) {
               />
             </label>
 
-            {mergedError && (
-              <p className="text-sm text-red-400">{mergedError}</p>
-            )}
+            {mergedError && <p className="text-sm text-red-400">{mergedError}</p>}
 
             <button
               type="submit"

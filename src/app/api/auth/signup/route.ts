@@ -1,7 +1,9 @@
 // src/app/api/auth/signup/route.ts
-import { prisma } from "@/lib/prisma";
-import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
@@ -25,33 +27,31 @@ export async function POST(req: Request) {
     }
 
     const rounds = Number.parseInt(String(process.env.BCRYPT_SALT_ROUNDS ?? 12), 10);
-    const passwordHash = await bcrypt.hash(password, Number.isFinite(rounds) ? rounds : 12);
+    const saltRounds = Number.isFinite(rounds) ? rounds : 12;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
 
     const created = await prisma.user.create({
       data: {
         email: normalized,
         name: name ?? null,
-        ...(telegram !== undefined ? ({ telegram } as any) : {}), // поле может отсутствовать в типах
+        // если поля нет в схеме — удалите строку ниже
+        telegram: telegram ?? null,
         passwordHash,
+        // 🔧 универсально для любых версий Prisma Client:
         role: "USER" as any,
         status: "PENDING" as any,
-      } as any,
-      // чтобы TS не ругался на status в select – не запрашиваем его
+      },
       select: { id: true, email: true, name: true },
     });
 
-    // вернём статус явно
-    const user = {
-      ...created,
-      status: "PENDING",
-    };
+    const user = { ...created, status: "PENDING" as const };
 
     return NextResponse.json(
       { ok: true, user, message: "Registration submitted. Wait for approval." },
       { status: 201 }
     );
   } catch (e) {
-    console.error(e);
+    console.error("signup error", e);
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
   }
 }

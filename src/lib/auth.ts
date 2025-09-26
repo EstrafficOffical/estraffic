@@ -43,6 +43,7 @@ declare module "next-auth/jwt" {
 }
 
 export const authOptions: NextAuthOptions = {
+  // 🔹 Если используешь только Credentials — PrismaAdapter можно убрать
   adapter: PrismaAdapter(prisma) as any,
 
   session: {
@@ -52,35 +53,12 @@ export const authOptions: NextAuthOptions = {
 
   secret: process.env.NEXTAUTH_SECRET,
 
-  // Куки кладём на общий домен, чтобы не слетала сессия
   cookies: {
     sessionToken: {
       name:
         process.env.NODE_ENV === "production"
           ? "__Secure-next-auth.session-token"
           : "next-auth.session-token",
-      options: {
-        domain: process.env.COOKIE_DOMAIN || undefined, // например .estraffic.com
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-      },
-    },
-    callbackUrl: {
-      name: "next-auth.callback-url",
-      options: {
-        domain: process.env.COOKIE_DOMAIN || undefined,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-      },
-    },
-    csrfToken: {
-      name:
-        process.env.NODE_ENV === "production"
-          ? "__Host-next-auth.csrf-token"
-          : "next-auth.csrf-token",
       options: {
         domain: process.env.COOKIE_DOMAIN || undefined,
         httpOnly: true,
@@ -120,7 +98,7 @@ export const authOptions: NextAuthOptions = {
 
           const status = (user as any).status as UserStatus | undefined;
           if (status === "BANNED") return null;
-          // Если нужно пускать только APPROVED — раскомментируй:
+          // если нужно пускать только APPROVED:
           // if (status && status !== "APPROVED") return null;
 
           const ok = await bcrypt.compare(password, user.passwordHash);
@@ -144,7 +122,6 @@ export const authOptions: NextAuthOptions = {
 
   callbacks: {
     async jwt({ token, user }) {
-      // первый вход
       if (user) {
         token.id = (user as any).id;
         token.role = (user as any).role as Role;
@@ -155,7 +132,6 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
-      // последующие запросы — подтягиваем актуальные поля из БД
       if (token.email) {
         try {
           const u = await prisma.user.findUnique({ where: { email: token.email } });
@@ -186,16 +162,10 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
 
-    // Безопасный редирект после signIn/signOut
     async redirect({ url, baseUrl }) {
       try {
-        // Нормализуем, чтобы корректно разобрать как абсолютные, так и относительные ссылки
         const target = new URL(url, baseUrl);
-
-        // Разрешаем редирект только в рамках нашего же origin
         if (target.origin !== baseUrl) return `${baseUrl}/ru`;
-
-        // Пытаемся вытащить локаль из пути; если нет — ru
         const seg = (target.pathname.split("/")[1] || "ru").toLowerCase();
         return `${baseUrl}/${seg}`;
       } catch {
@@ -210,9 +180,7 @@ export function auth() {
   return getServerSession(authOptions);
 }
 
-// хендлеры для app/api/auth/[...nextauth]
 const nextAuthHandler = (NextAuth as any)(authOptions);
 export const handlers = { GET: nextAuthHandler, POST: nextAuthHandler };
 
-// клиентские хелперы
 export { signIn, signOut } from "next-auth/react";
