@@ -44,10 +44,12 @@ declare module "next-auth/jwt" {
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
+
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 дней
   },
+
   secret: process.env.NEXTAUTH_SECRET,
 
   // Куки кладём на общий домен, чтобы не слетала сессия
@@ -58,7 +60,7 @@ export const authOptions: NextAuthOptions = {
           ? "__Secure-next-auth.session-token"
           : "next-auth.session-token",
       options: {
-        domain: process.env.COOKIE_DOMAIN || undefined, // .estraffic.com
+        domain: process.env.COOKIE_DOMAIN || undefined, // например .estraffic.com
         httpOnly: true,
         sameSite: "lax",
         path: "/",
@@ -111,24 +113,17 @@ export const authOptions: NextAuthOptions = {
         try {
           const email = (creds?.email ?? "").trim().toLowerCase();
           const password = creds?.password ?? "";
-          console.log("authorize: input", email);
-
           if (!email || !password) return null;
 
           const user = await prisma.user.findUnique({ where: { email } });
-          console.log("authorize: user", !!user, (user as any)?.status, (user as any)?.role);
           if (!user?.passwordHash) return null;
 
           const status = (user as any).status as UserStatus | undefined;
-          if (status === "BANNED") {
-            console.log("authorize: banned");
-            return null;
-          }
-          // если надо пускать только APPROVED — раскомментируй:
+          if (status === "BANNED") return null;
+          // Если нужно пускать только APPROVED — раскомментируй:
           // if (status && status !== "APPROVED") return null;
 
           const ok = await bcrypt.compare(password, user.passwordHash);
-          console.log("authorize: password ok?", ok);
           if (!ok) return null;
 
           return {
@@ -149,6 +144,7 @@ export const authOptions: NextAuthOptions = {
 
   callbacks: {
     async jwt({ token, user }) {
+      // первый вход
       if (user) {
         token.id = (user as any).id;
         token.role = (user as any).role as Role;
@@ -159,6 +155,7 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
+      // последующие запросы — подтягиваем актуальные поля из БД
       if (token.email) {
         try {
           const u = await prisma.user.findUnique({ where: { email: token.email } });
@@ -187,6 +184,23 @@ export const authOptions: NextAuthOptions = {
         status: ((token.status as UserStatus) ?? "PENDING") as UserStatus,
       };
       return session;
+    },
+
+    // Безопасный редирект после signIn/signOut
+    async redirect({ url, baseUrl }) {
+      try {
+        // Нормализуем, чтобы корректно разобрать как абсолютные, так и относительные ссылки
+        const target = new URL(url, baseUrl);
+
+        // Разрешаем редирект только в рамках нашего же origin
+        if (target.origin !== baseUrl) return `${baseUrl}/ru`;
+
+        // Пытаемся вытащить локаль из пути; если нет — ru
+        const seg = (target.pathname.split("/")[1] || "ru").toLowerCase();
+        return `${baseUrl}/${seg}`;
+      } catch {
+        return `${baseUrl}/ru`;
+      }
     },
   },
 };
