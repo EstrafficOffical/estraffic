@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import AuthedHomeHeader from "@/app/components/AuthedHomeHeader";
 
 export const dynamic = "force-dynamic"; // важно для учёта сессии на Vercel
 
@@ -47,7 +48,7 @@ export default async function HomePage({
   const session = await auth();
 
   // ───────────────────────────────────────────────────────
-  // ГОСТЬ: показываем твою маркетинговую главную как есть
+  // ГОСТЬ: маркетинговая главная
   // ───────────────────────────────────────────────────────
   if (!session) {
     return (
@@ -129,7 +130,7 @@ export default async function HomePage({
   }
 
   // ───────────────────────────────────────────────────────
-  // АВТОРИЗОВАННЫЙ: подтягиваем реальные данные пользователя
+  // АВТОРИЗОВАННЫЙ: реальные данные пользователя
   // ───────────────────────────────────────────────────────
   const userId = session.user.id;
 
@@ -173,15 +174,22 @@ export default async function HomePage({
       orderBy: { _sum: { amount: "desc" } },
       take: 5,
     }),
-    prisma.offer.findMany({ orderBy: { createdAt: "desc" }, take: 3, select: { id: true, title: true, vertical: true, geo: true } }),
+    prisma.offer.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      select: { id: true, title: true, vertical: true, geo: true },
+    }),
   ]);
 
-  // подтянем названия топ-офферов
   const offerIds = topOffersGroup.map((g) => g.offerId);
   const offerMap = offerIds.length
     ? Object.fromEntries(
-        (await prisma.offer.findMany({ where: { id: { in: offerIds } }, select: { id: true, title: true, vertical: true, geo: true } }))
-          .map((o) => [o.id, o])
+        (
+          await prisma.offer.findMany({
+            where: { id: { in: offerIds } },
+            select: { id: true, title: true, vertical: true, geo: true },
+          })
+        ).map((o) => [o.id, o])
       )
     : {};
 
@@ -191,11 +199,19 @@ export default async function HomePage({
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-8 text-white/90">
+      {/* выдвижное меню / хедер для залогиненных */}
+      <AuthedHomeHeader
+        locale={locale}
+        displayName={session.user.name || (session.user.email ?? "Пользователь")}
+      />
+
       {/* приветствие */}
       <section className="rounded-2xl border border-white/12 bg-white/5 p-6 shadow-[0_8px_40px_rgba(0,0,0,.45)]">
         <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
           <div>
-            <h1 className="text-3xl font-extrabold">Привет, {session.user.name || session.user.email} 👋</h1>
+            <h1 className="text-3xl font-extrabold">
+              Привет, {session.user.name || session.user.email} 👋
+            </h1>
             <p className="mt-1 text-white/70">Ваш быстрый обзор за сегодня и последние офферы.</p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -251,12 +267,17 @@ export default async function HomePage({
               const title = o?.title || g.offerId;
               const meta = [o?.vertical, o?.geo].filter(Boolean).join(" • ");
               return (
-                <li key={g.offerId} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                <li
+                  key={g.offerId}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3"
+                >
                   <div className="min-w-0">
                     <div className="truncate font-medium">{title}</div>
                     {meta && <div className="truncate text-xs text-white/60">{meta}</div>}
                   </div>
-                  <div className="shrink-0 font-semibold">{fmtMoney(Number(g._sum.amount || 0))}</div>
+                  <div className="shrink-0 font-semibold">
+                    {fmtMoney(Number(g._sum.amount || 0))}
+                  </div>
                 </li>
               );
             })}
@@ -268,7 +289,10 @@ export default async function HomePage({
           <div className="text-sm text-white/70">Новые офферы</div>
           <ul className="mt-3 space-y-2">
             {recentOffers.map((o) => (
-              <li key={o.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
+              <li
+                key={o.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-3"
+              >
                 <div className="min-w-0">
                   <div className="truncate font-medium">{o.title}</div>
                   <div className="truncate text-xs text-white/60">
@@ -298,7 +322,8 @@ export default async function HomePage({
                   {fmtMoney(Number(latestPayout.amount), latestPayout.currency || "USD")}
                 </div>
                 <div className="text-xs text-white/60">
-                  {new Date(latestPayout.createdAt).toLocaleDateString("ru-RU")} • {latestPayout.status}
+                  {new Date(latestPayout.createdAt).toLocaleDateString("ru-RU")} •{" "}
+                  {latestPayout.status}
                 </div>
               </>
             ) : (
