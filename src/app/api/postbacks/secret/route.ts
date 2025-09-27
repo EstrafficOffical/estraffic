@@ -1,15 +1,13 @@
-/* src/app/api/postbacks/secret/route.ts */
+// src/app/api/postbacks/secret/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const role = (session?.user as any)?.role ?? "USER";
+  if (!session || role !== "ADMIN") {
+    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
-  // можно ограничить только для админов:
-  // if ((session.user as any).role !== "ADMIN") return NextResponse.json({ error: "forbidden" }, { status: 403 });
-
   const secret = process.env.POSTBACK_SHARED_SECRET || "";
   return NextResponse.json({ secret });
 }

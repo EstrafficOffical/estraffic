@@ -1,37 +1,35 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import { usePathname } from 'next/navigation';
-import NavToggle from '@/app/components/NavToggle';
-import NavDrawer from '@/app/components/NavDrawer';
+import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import NavToggle from "@/app/components/NavToggle";
+import NavDrawer from "@/app/components/NavDrawer";
 
-export default function PostbacksPage() {
-  // локаль из URL
-  const pathname = usePathname();
-  const locale = (pathname?.split('/')?.[1] || 'ru') as string;
-
-  // выдвижное меню (нужно для NavDrawer пропсов)
+export default function PostbacksClient({ locale }: { locale: string }) {
+  const pathname = usePathname(); // не обязательно, но ок
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // секрет берём с сервера
-  const [secret, setSecret] = useState('<POSTBACK_SHARED_SECRET>');
+  // секрет берём с сервера (доступен только админу)
+  const [secret, setSecret] = useState("<POSTBACK_SHARED_SECRET>");
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const r = await fetch('/api/postbacks/secret', { cache: 'no-store' });
+        const r = await fetch("/api/postbacks/secret", { cache: "no-store" });
         const j = await r.json().catch(() => ({}));
         if (alive && r.ok && j?.secret) setSecret(String(j.secret));
       } catch {}
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const devUrl = 'http://localhost:3000/api/postbacks/ingest';
+  const devUrl = "http://localhost:3000/api/postbacks/ingest";
   const prodUrl = useMemo(() => {
-    if (typeof window === 'undefined') return 'https://<домен>/api/postbacks/ingest';
+    if (typeof window === "undefined") return "https://<домен>/api/postbacks/ingest";
     return `${window.location.origin}/api/postbacks/ingest`;
   }, []);
 
@@ -51,15 +49,13 @@ export default function PostbacksPage() {
         <span className="font-semibold text-white">Estrella</span>
       </div>
 
-      <h1 className="mb-4 text-3xl font-extrabold text-white">
-        Документация по постбеку
-      </h1>
+      <h1 className="mb-4 text-3xl font-extrabold text-white">Документация по постбеку</h1>
 
       {/* Обзор */}
       <div className="mb-6 rounded-2xl border border-white/15 bg-white/5 p-4 text-white/85">
         Этот раздел описывает приём постбеков в Estrella. Используйте его, чтобы отправлять
-        события (регистрация, депозит, продажа и т.д.) в систему. Эндпоинт идемпотентен по паре{' '}
-        <code className="rounded bg-black/40 px-1">offerId</code> +{' '}
+        события (регистрация, депозит, продажа и т.д.) в систему. Эндпоинт идемпотентен по паре{" "}
+        <code className="rounded bg-black/40 px-1">offerId</code> +{" "}
         <code className="rounded bg-black/40 px-1">txId</code>.
       </div>
 
@@ -80,9 +76,7 @@ export default function PostbacksPage() {
               Копировать
             </button>
           </div>
-          <div className="mt-3 text-xs text-white/60">
-            Метод: POST (JSON). GET допускается для отладки.
-          </div>
+          <div className="mt-3 text-xs text-white/60">Метод: POST (JSON). GET допускается для отладки.</div>
         </div>
 
         <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
@@ -120,7 +114,7 @@ export default function PostbacksPage() {
             onClick={() => copy(secret)}
             className="whitespace-nowrap rounded-xl border border-white/20 px-3 py-2 text-sm text-white/90 hover:bg-white/10"
           >
-            {copied ? 'Скопировано' : 'Копировать'}
+            {copied ? "Скопировано" : "Копировать"}
           </button>
         </div>
         <div className="mt-3 text-xs text-amber-300/80">
@@ -148,7 +142,7 @@ Content-Type: application/json
         </pre>
       </div>
 
-      {/* сам Drawer: обязателен на странице */}
+      {/* Drawer */}
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} />
     </section>
   );

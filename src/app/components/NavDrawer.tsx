@@ -20,8 +20,7 @@ type SessionPayload = {
     email?: string | null;
     name?: string | null;
     image?: string | null;
-    // если в next-auth callbacks ты добавляешь роль/статус — они приедут сюда
-    role?: string | null;
+    role?: string | null;   // приходит из next-auth callbacks, если добавляешь
     status?: string | null;
   } | null;
 };
@@ -40,13 +39,13 @@ export default function NavDrawer({
     [locale, pathname]
   );
 
-  // локальное состояние авторизации (достанем из /api/auth/session)
+  // локальная сессия (через /api/auth/session)
   const [email, setEmail] = useState<string | undefined>(userEmailProp);
   const [role, setRole] = useState<string | undefined>(undefined);
   const [statusFlag, setStatusFlag] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (userEmailProp) return; // уже пробросили с сервера
+    if (userEmailProp) return; // уже пробросили
     let cancelled = false;
     (async () => {
       try {
@@ -69,8 +68,7 @@ export default function NavDrawer({
   const authed = !!email;
   const isAdmin = isAdminProp ?? role === "ADMIN";
   const badge =
-    userBadgeProp ??
-    ([role, statusFlag].filter(Boolean).join(" · ") || undefined);
+    userBadgeProp ?? ([role, statusFlag].filter(Boolean).join(" · ") || undefined);
 
   // утилита active-ссылки
   const A = (href: string, label: string) => {
@@ -129,7 +127,7 @@ export default function NavDrawer({
               {A("/", "Главная")}
             </div>
 
-            {/* Остальные пункты — только если залогинен */}
+            {/* Для авторизованных */}
             {authed && (
               <div className="mt-2 list-none space-y-1">
                 {A("/profile", "Профиль")}
@@ -137,8 +135,8 @@ export default function NavDrawer({
                 {A("/offers", "Офферы")}
                 {A("/offers/mine", "Мои офферы")}
                 {A("/finance", "Финансы")}
-                {A("/postback", "Постбеки")}
                 {A("/conversions", "Конверсии")}
+                {/* Пункт «Постбеки» убрали отсюда — только для админа ниже */}
               </div>
             )}
 
@@ -152,6 +150,7 @@ export default function NavDrawer({
                   {A("/admin/offers/create", "Создать оффер")}
                   {A("/admin/requests", "Заявки на офферы")}
                   {A("/admin/users", "Пользователи")}
+                  {A("/postbacks", "Постбеки")}
                 </div>
               </>
             )}
