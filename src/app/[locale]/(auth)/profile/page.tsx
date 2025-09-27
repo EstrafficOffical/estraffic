@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import NavDrawer from '@/app/components/NavDrawer';
 
@@ -15,6 +16,8 @@ type BasicUser = {
 type GetProfileResponse = { user?: BasicUser };
 
 export default function ProfilePage() {
+  const router = useRouter();
+
   // ===== UI / drawer =====
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -60,7 +63,6 @@ export default function ProfilePage() {
         }
       } finally {
         if (alive) {
-          // timezone: берём из localStorage либо по умолчанию
           const stored = typeof window !== 'undefined' ? localStorage.getItem('tz') : null;
           setTz(stored || 'UTC+03:00');
           setLoading(false);
@@ -77,6 +79,8 @@ export default function ProfilePage() {
   function onAvatarChosen(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
+    if (!f.type.startsWith('image/')) return;
+    if (f.size > 5 * 1024 * 1024) return; // до 5 МБ
     setAvatarFile(f);
     setAvatarPreview(URL.createObjectURL(f));
   }
@@ -94,24 +98,51 @@ export default function ProfilePage() {
     return null;
   }
 
+  // ✔ пресайн → PUT → PATCH image
   async function saveAvatar(): Promise<string | null> {
     if (!avatarFile) return null;
-    const fd = new FormData();
-    fd.append('file', avatarFile);
-    const r = await fetch('/api/profile/avatar', { method: 'POST', body: fd });
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      return j?.error || 'Не удалось загрузить аватар';
+
+    try {
+      // 1) просим пресайн для загрузки
+      const presign = await fetch('/api/upload/avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentType: avatarFile.type }),
+      });
+      if (!presign.ok) {
+        const j = await presign.json().catch(() => ({}));
+        return j?.error || 'Не удалось получить ссылку загрузки';
+      }
+      const { uploadUrl, publicUrl } = await presign.json();
+
+      // 2) грузим файл напрямую в S3
+      const put = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: avatarFile,
+        headers: { 'Content-Type': avatarFile.type },
+      });
+      if (!put.ok) return 'Ошибка загрузки файла';
+
+      // 3) сохраняем URL в профиле
+      const patch = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: publicUrl }),
+      });
+      if (!patch.ok) {
+        const j = await patch.json().catch(() => ({}));
+        return j?.error || 'Не удалось сохранить аватар';
+      }
+
+      setAvatarFile(null);
+      setAvatarPreview(publicUrl);
+      return null;
+    } catch {
+      return 'Сбой загрузки аватара';
     }
-    const j = await r.json().catch(() => ({}));
-    if (j?.url) setAvatarPreview(j.url);
-    // сброс выбранного файла
-    setAvatarFile(null);
-    return null;
   }
 
   async function savePassword(): Promise<string | null> {
-    // если не заполняли — пропускаем
     if (!currentPassword && !newPassword && !repeatPassword) return null;
     if (newPassword !== repeatPassword) return 'Пароли не совпадают';
     if (newPassword.length < 6) return 'Новый пароль слишком короткий';
@@ -125,7 +156,6 @@ export default function ProfilePage() {
       const j = await r.json().catch(() => ({}));
       return j?.error || 'Не удалось изменить пароль';
     }
-    // очистим поля
     setCurPwd('');
     setNewPwd('');
     setRepPwd('');
@@ -173,12 +203,15 @@ export default function ProfilePage() {
           ? `Готово: ${done.join(', ')}. Ошибки: ${errors.join('; ')}`
           : 'Все изменения сохранены',
       );
+
+      // Обновим серверные данные (например, аватар в шапке приложения)
+      router.refresh();
     });
   }
 
   return (
-    <section className="relative max-w-5xl mx-auto px-4 py-8 space-y-8">
-      {/* Верхняя панель — звезда+бренд */}
+    <section className="relative mx-auto max-w-5xl px-4 py-8 space-y-8 text-white/90">
+      {/* Верхняя панель */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
@@ -189,13 +222,13 @@ export default function ProfilePage() {
             <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
           </svg>
         </button>
-        <span className="font-semibold text-white">Estrella</span>
+        <span className="font-semibold">Estrella</span>
 
         <div className="ml-auto">
           <button
             onClick={onSaveAll}
             disabled={pending || loading}
-            className="rounded-xl border border-white/20 px-4 py-2 text-sm hover:bg-white/10 disabled:opacity-50"
+            className="rounded-2xl border-2 border-rose-500/70 px-4 py-2 text-sm font-semibold shadow-[0_0_0_2px_rgba(255,0,90,.25),0_0_18px_rgba(255,0,90,.45)] hover:bg-rose-500/10 disabled:opacity-50"
           >
             {pending ? 'Сохраняю…' : 'Сохранить всё'}
           </button>
@@ -204,7 +237,7 @@ export default function ProfilePage() {
 
       {/* Аватар */}
       <div className="relative flex justify-center">
-        <div className="relative h-28 w-28 rounded-full border border-white/30 bg-white/10 overflow-hidden">
+        <div className="relative h-32 w-32 rounded-full border border-white/30 bg-white/10 overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,.45)]">
           {avatarPreview ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={avatarPreview} alt="avatar" className="h-full w-full object-cover" />
@@ -289,6 +322,7 @@ export default function ProfilePage() {
                   .map(v => <option key={v} value={v} className="bg-zinc-900">{v}</option>)}
               </select>
             </Field>
+            <div className="text-xs text-white/50">* Для примера — сохраняется локально.</div>
           </div>
         </Card>
 
@@ -319,6 +353,7 @@ export default function ProfilePage() {
                 className="w-full rounded-xl border border-white/20 bg-white/10 text-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/25"
               />
             </Field>
+            <div className="text-xs text-white/50">Смена пароля — опционально, если эндпоинт подключён.</div>
           </div>
         </Card>
 
@@ -342,7 +377,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Drawer */}
+      {/* Drawer (оставляем как у тебя) */}
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
     </section>
   );

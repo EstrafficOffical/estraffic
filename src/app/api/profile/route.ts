@@ -4,42 +4,44 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const PatchSchema = z.object({
   name: z.string().trim().max(120).optional(),
-  telegram: z.string().trim().max(120).optional(),
+  telegram: z.string().trim().max(191).optional().nullable(),
   email: z.string().trim().email().optional(),
+  image: z.string().url().optional().nullable(), // 👈 поддержка аватара
 });
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
-  const id = (session.user as any).id as string;
+  const id = session.user.id as string;
 
-  const base = await prisma.user.findUnique({
+  // выбираем безопасный набор полей
+  const user = await prisma.user.findUnique({
     where: { id },
-    // telegram не выбираем напрямую — вернём ниже через any
-    select: { id: true, email: true, name: true, image: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      image: true,
+      // если у тебя когда-то были проблемы с типами — можно убрать эту строку
+      telegram: true,
+    },
   });
-
-  const user = base
-    ? {
-        ...base,
-        // @ts-ignore
-        telegram: (base as any)?.telegram ?? null,
-      }
-    : null;
 
   return NextResponse.json({ user });
 }
 
 export async function PATCH(req: Request) {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
-  const id = (session.user as any).id as string;
+  const id = session.user.id as string;
 
   const body = await req.json().catch(() => ({}));
   const parsed = PatchSchema.safeParse(body);
@@ -47,15 +49,27 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "VALIDATION" }, { status: 400 });
   }
 
+  const payload = parsed.data;
+
   const data: any = {};
-  if (parsed.data.name !== undefined) data.name = parsed.data.name || null;
-  if (parsed.data.telegram !== undefined) data.telegram = parsed.data.telegram || null;
-  if (parsed.data.email !== undefined) data.email = parsed.data.email || null;
+  if (payload.name !== undefined) data.name = payload.name || null;
+  if (payload.telegram !== undefined) data.telegram = payload.telegram || null;
+  if (payload.email !== undefined) data.email = payload.email.toLowerCase();
+  if (payload.image !== undefined) data.image = payload.image || null; // 👈 пишем/очищаем аватар
 
   try {
-    const user = await prisma.user.update({ where: { id }, data, select: { id: true } });
-    return NextResponse.json({ ok: true, id: user.id });
+    const updated = await prisma.user.update({
+      where: { id },
+      data,
+      select: { id: true, email: true, name: true, telegram: true, image: true },
+    });
+
+    return NextResponse.json({ ok: true, user: updated });
   } catch (e: any) {
+    // P2002 — например, уникальный email уже занят
+    if (e?.code === "P2002") {
+      return NextResponse.json({ error: "DUPLICATE" }, { status: 409 });
+    }
     return NextResponse.json({ error: e?.code || "DB_ERROR" }, { status: 400 });
   }
 }
