@@ -41,12 +41,11 @@ type ByEventRow = {
 type SeriesPoint = { day: string; clicks: number; conversions: number; revenue: number };
 
 export default function StatsPage() {
-  // ——— выдвижное меню
   const pathname = usePathname();
   const locale = (pathname?.split('/')?.[1] || 'ru') as string;
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // ——— фильтры периода
+  // период
   const [from, setFrom] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -54,7 +53,7 @@ export default function StatsPage() {
   });
   const [to, setTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
-  // ——— данные
+  // данные
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [byOffer, setByOffer] = useState<ByOfferRow[]>([]);
@@ -63,7 +62,6 @@ export default function StatsPage() {
   const [series, setSeries] = useState<SeriesPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // ——— загрузка
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -101,7 +99,7 @@ export default function StatsPage() {
         setBySource(srcRes.ok ? (Array.isArray(srcJson?.items) ? srcJson.items : (Array.isArray(srcJson) ? srcJson : [])) : []);
         setByEvent(eRes.ok ? (Array.isArray(eJson?.items) ? eJson.items : (Array.isArray(eJson) ? eJson : [])) : []);
         setSeries(tRes.ok ? (Array.isArray(tJson?.series) ? tJson.series : (Array.isArray(tJson) ? tJson : [])) : []);
-      } catch (err) {
+      } catch {
         if (alive) setError('Не удалось загрузить статистику');
       } finally {
         if (alive) setLoading(false);
@@ -116,17 +114,17 @@ export default function StatsPage() {
   const kpis = useMemo(() => {
     const s = summary || { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0 };
     return [
-      { title: 'Clicks', value: (s.clicks ?? 0).toLocaleString() },
-      { title: 'Conversions', value: (s.conversions ?? 0).toLocaleString() },
-      { title: 'Revenue', value: fmtMoney(s.revenue ?? 0) },
+      { title: 'Доход', value: fmtMoney(s.revenue ?? 0) },
+      { title: 'Клики', value: (s.clicks ?? 0).toLocaleString() },
+      { title: 'Конверсии', value: (s.conversions ?? 0).toLocaleString() },
       { title: 'EPC', value: fmtMoney(s.epc ?? 0) },
       { title: 'CR', value: `${(((s.cr ?? 0) * 100) || 0).toFixed(2)}%` },
     ];
   }, [summary]);
 
   return (
-    <section className="relative mx-auto max-w-7xl space-y-8 px-4 py-8">
-      {/* шапка как на остальных страницах: квадрат со ⭐ + Estrella */}
+    <section className="relative mx-auto max-w-7xl space-y-8 px-4 py-8 text-white/90">
+      {/* шапка в едином стиле */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
@@ -173,7 +171,7 @@ export default function StatsPage() {
       {/* KPI */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
         {kpis.map((k) => (
-          <div key={k.title} className="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 backdrop-blur-md">
+          <div key={k.title} className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 backdrop-blur-md">
             <div className="text-sm text-white/75">{k.title}</div>
             <div className="mt-1 text-2xl font-semibold">{k.value}</div>
           </div>
@@ -317,19 +315,15 @@ export default function StatsPage() {
       </section>
 
       {error && (
-        <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-rose-100">
-          {error}
-        </div>
+        <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 p-4 text-rose-100">{error}</div>
       )}
 
-      {/* выдвижное меню */}
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} />
     </section>
   );
 }
 
 /* ——— мелкие утилиты UI ——— */
-
 function Th({ children }: { children: React.ReactNode }) {
   return <th className="px-4 py-3 font-semibold">{children}</th>;
 }

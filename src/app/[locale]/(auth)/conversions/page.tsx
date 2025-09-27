@@ -6,7 +6,7 @@ import NavDrawer from "@/app/components/NavDrawer";
 
 type Conv = {
   id: string;
-  createdAt: string; // ISO
+  createdAt: string;
   user: { id: string; email: string | null; name: string | null } | null;
   offer: { id: string; title: string } | null;
   subId: string | null;
@@ -60,9 +60,7 @@ export default function ConversionsPage() {
         if (alive) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   const filtered = useMemo(() => {
@@ -110,14 +108,14 @@ export default function ConversionsPage() {
   }
 
   return (
-    <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-8">
+    <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-8 text-white/90">
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
           aria-label="Open navigation"
           className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/20 border border-white/40"
         >
-          <svg viewBox="0 0 24 24" className="w-4 h-4 text-black/80" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/80" aria-hidden>
             <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
           </svg>
         </button>
@@ -133,9 +131,7 @@ export default function ConversionsPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search (offer, email, subid, txid)…"
-              className="w-full rounded-xl px-10 py-3 outline-none
-                         bg-zinc-900 text-white caret-white placeholder:text-white/50
-                         border border-white/15 backdrop-blur-xl focus:ring-2 focus:ring-white/20"
+              className="w-full rounded-xl px-10 py-3 outline-none bg-zinc-900 text-white placeholder:text-white/50 border border-white/15 backdrop-blur-xl focus:ring-2 focus:ring-white/20"
             />
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/60">🔎</span>
           </div>
@@ -163,6 +159,7 @@ export default function ConversionsPage() {
         />
       </div>
 
+      {/* тестовый постбек (можно скрывать по флажку env) */}
       <div className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xl p-4">
         <button
           className="text-sm text-white/80 underline underline-offset-4"
@@ -192,10 +189,7 @@ export default function ConversionsPage() {
             <Input label="currency" value={test.currency} onChange={(v) => onTestChange("currency", v)} />
             <Input label="tx_id" value={test.tx_id} onChange={(v) => onTestChange("tx_id", v)} />
             <div className="md:col-span-3 flex items-center gap-3">
-              <button
-                className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15"
-                type="submit"
-              >
+              <button className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15" type="submit">
                 Отправить тестовый постбек
               </button>
               {testMsg && <span className="text-sm text-white/70">{testMsg}</span>}
@@ -250,7 +244,7 @@ export default function ConversionsPage() {
         </table>
       </div>
 
-      <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} />
     </section>
   );
 }
@@ -262,18 +256,9 @@ function Td({ children, className }: { children: React.ReactNode; className?: st
   return <td className={`px-4 py-3 ${className ?? ""}`}>{children}</td>;
 }
 function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-lg px-2 py-1 text-xs bg-white/10 border border-white/15">
-      {children}
-    </span>
-  );
+  return <span className="inline-flex items-center rounded-lg px-2 py-1 text-xs bg-white/10 border border-white/15">{children}</span>;
 }
-function Input(props: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-}) {
+function Input(props: { label: string; value: string; onChange: (v: string) => void; type?: string; }) {
   return (
     <div>
       <label className="block text-sm mb-1 text-white/80">{props.label}</label>
