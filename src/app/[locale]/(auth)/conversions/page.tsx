@@ -1,3 +1,4 @@
+// src/app/[locale]/conversions/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -6,7 +7,7 @@ import NavDrawer from "@/app/components/NavDrawer";
 
 type Conv = {
   id: string;
-  createdAt: string;
+  createdAt: string | null; // бывает битая/пустая
   user: { id: string; email: string | null; name: string | null } | null;
   offer: { id: string; title: string } | null;
   subId: string | null;
@@ -19,6 +20,20 @@ type Conv = {
 
 const TYPES = ["ALL", "REG", "DEP", "REBILL", "SALE", "LEAD"] as const;
 type TypeFilter = (typeof TYPES)[number];
+
+/* ── безопасные форматтеры ───────────────────────────────────────────── */
+
+function fmtDate(iso: string | null | undefined) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleString();
+}
+
+function fmtMoney(n: number | string | null | undefined) {
+  const num = Number(n);
+  if (!isFinite(num)) return "—";
+  return "$" + num.toFixed(2);
+}
 
 export default function ConversionsPage() {
   const pathname = usePathname();
@@ -53,14 +68,16 @@ export default function ConversionsPage() {
         setLoading(true);
         const res = await fetch("/api/postbacks/conversions", { cache: "no-store" });
         const data = (res.ok ? await res.json() : []) as Conv[];
-        if (alive) setRows(data);
+        if (alive) setRows(Array.isArray(data) ? data : []);
       } catch {
         if (alive) setRows([]);
       } finally {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -71,8 +88,13 @@ export default function ConversionsPage() {
     return rows.filter((r) => {
       const rowType = (r.type ?? r.event) as TypeFilter | undefined;
       if (type !== "ALL" && rowType !== type) return false;
-      const t = new Date(r.createdAt).getTime();
-      if (t < fromTs || t > toTs) return false;
+
+      // безопасно считаем время; если плохая дата — пропускаем фильтр по датам
+      const t = r.createdAt ? new Date(r.createdAt).getTime() : NaN;
+      if (isFinite(t)) {
+        if (t < fromTs || t > toTs) return false;
+      }
+
       if (!ql) return true;
       const hay = (
         `${r.offer?.title ?? ""} ${r.offer?.id ?? ""} ${r.user?.email ?? ""} ${r.user?.name ?? ""} ${r.subId ?? ""} ${r.txId ?? ""}`
@@ -159,7 +181,7 @@ export default function ConversionsPage() {
         />
       </div>
 
-      {/* тестовый постбек (можно скрывать по флажку env) */}
+      {/* тестовый постбек (можно скрыть через фиче-флаг) */}
       <div className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xl p-4">
         <button
           className="text-sm text-white/80 underline underline-offset-4"
@@ -220,10 +242,9 @@ export default function ConversionsPage() {
             ) : (
               filtered.map((r) => {
                 const rowType = r.type ?? r.event ?? "—";
-                const amountStr = r.amount != null ? "$" + Number(r.amount).toFixed(2) : "—";
                 return (
                   <tr key={r.id} className="border-t border-white/10">
-                    <Td>{new Date(r.createdAt).toLocaleString()}</Td>
+                    <Td>{fmtDate(r.createdAt)}</Td>
                     <Td>
                       <div className="flex flex-col">
                         <span className="font-medium">{r.offer?.title ?? "—"}</span>
@@ -231,7 +252,7 @@ export default function ConversionsPage() {
                       </div>
                     </Td>
                     <Td><Badge>{rowType}</Badge></Td>
-                    <Td>{amountStr}</Td>
+                    <Td>{fmtMoney(r.amount)}</Td>
                     <Td>{r.currency ?? "—"}</Td>
                     <Td className="font-mono">{r.subId ?? "—"}</Td>
                     <Td className="font-mono">{r.txId ?? "—"}</Td>
