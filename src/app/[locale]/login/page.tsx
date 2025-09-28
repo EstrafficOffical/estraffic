@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
+import Link from "next/link";
 
 export default function LoginPage({ params }: { params: { locale: string } }) {
   const { locale } = params;
@@ -42,32 +43,29 @@ export default function LoginPage({ params }: { params: { locale: string } }) {
       : null);
 
   const inputCls =
-    "w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-white/90 outline-none placeholder:text-white/40 focus:border-white/40 focus:shadow-[0_0_0_3px_rgba(255,255,255,.12)]";
+    "w-full rounded-xl border border-white/15 bg-zinc-900 px-3 py-2 text-white/90 outline-none placeholder:text-white/40 focus:ring-2 focus:ring-white/20";
 
-  const btnBase =
+  const tab =
     "px-5 py-2.5 rounded-xl text-sm font-semibold transition focus:shadow-[0_0_0_4px_rgba(255,255,255,.14)]";
-  const btnPrimary =
-    "border border-rose-500/40 bg-rose-500/90 hover:bg-rose-500 text-white";
-  const btnGhost =
-    "border border-white/25 bg-white/10 hover:bg-white/15 text-white/90";
+  const tabActive =
+    "border-2 border-rose-500/70 bg-rose-500/15 text-white shadow-[0_0_0_2px_rgba(255,0,90,.25),0_0_18px_rgba(255,0,90,.45)]";
+  const tabGhost =
+    "border border-white/20 bg-white/5 text-white/90 hover:bg-white/10";
 
   return (
-    <div className="min-h-screen px-4 py-10 text-white/90">
+    <main className="min-h-screen px-4 py-10 text-white">
       <div className="mx-auto w-full max-w-2xl">
+        {/* Табы */}
         <div className="mb-6 flex gap-3">
-          <a
-            href={`/${locale}/login`}
-            aria-current="page"
-            className={`${btnGhost}`}
-          >
+          <Link href={`/${locale}/login`} aria-current="page" className={`${tab} ${tabActive}`}>
             Войти
-          </a>
-          <a href={`/${locale}/register`} className={`${btnPrimary}`}>
+          </Link>
+          <Link href={`/${locale}/register`} className={`${tab} ${tabGhost}`}>
             Регистрация
-          </a>
+          </Link>
         </div>
 
-        <div className="rounded-2xl border border-white/12 bg-white/5 p-6 shadow-[0_8px_40px_rgba(0,0,0,.45)]">
+        <section className="rounded-2xl border border-white/12 bg-white/5 p-6 shadow-[0_8px_40px_rgba(0,0,0,.45)]">
           <h1 className="mb-4 text-2xl font-extrabold">Вход в кабинет</h1>
 
           <form onSubmit={onSubmit} className="grid gap-4">
@@ -95,18 +93,20 @@ export default function LoginPage({ params }: { params: { locale: string } }) {
               />
             </label>
 
-            {mergedError && <p className="text-sm text-red-400">{mergedError}</p>}
+            {mergedError && (
+              <p className="text-sm text-rose-300/90">{mergedError}</p>
+            )}
 
             <button
               type="submit"
               disabled={submitting}
-              className={`${btnGhost} w-full`}
+              className="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-white hover:bg-white/15 disabled:opacity-60"
             >
               {submitting ? "Входим…" : "Войти"}
             </button>
           </form>
-        </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
