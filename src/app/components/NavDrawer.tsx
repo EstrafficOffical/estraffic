@@ -162,13 +162,22 @@ export default function NavDrawer({
         {/* футер */}
         <div className="sticky bottom-0 w-full border-t border-white/10 bg-zinc-950/95 px-4 py-3">
           {!authed ? (
-            <Link
-              href={`/api/auth/signin?callbackUrl=/${detectedLocale}`}
-              onClick={onClose}
-              className="block w-full truncate text-left text-[13px] text-white/90 hover:text-white"
-            >
-              Войти
-            </Link>
+            <div className="flex items-center justify-between gap-2">
+              <Link
+                href={`/${detectedLocale}/login`}
+                onClick={onClose}
+                className="rounded-md border border-white/20 px-3 py-1 text-[13px] text-white/90 hover:bg-white/10"
+              >
+                Войти
+              </Link>
+              <Link
+                href={`/${detectedLocale}/register`}
+                onClick={onClose}
+                className="rounded-md border border-rose-500/40 bg-rose-500/90 px-3 py-1 text-[13px] font-semibold text-white hover:bg-rose-500"
+              >
+                Регистрация
+              </Link>
+            </div>
           ) : (
             <div className="flex items-center justify-between gap-2">
               <div className="truncate text-[13px] text-white/80" title={email}>
