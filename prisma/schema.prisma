@@ -135,6 +135,8 @@ model Offer {
   mode      OfferMode   @default(Auto)
   status    OfferStatus @default(ACTIVE)
   targetUrl String?     @db.Text
+  trackingTemplate String? @db.Text   // шаблон трекинг-ссылки, если есть
+  hidden           Boolean  @default(false) // скрыть из публичных списков
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
@@ -171,6 +173,7 @@ model OfferRequest {
   status      RequestStatus @default(PENDING)
   createdAt   DateTime      @default(now())
   processedAt DateTime?
+  completedAt DateTime?
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)

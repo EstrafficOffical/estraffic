@@ -36,6 +36,20 @@ export default function MyOffersPage() {
     return () => { alive = false; };
   }, []);
 
+  async function complete(offerId: string) {
+    const r = await fetch("/api/offers/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ offerId }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j?.ok) {
+      setRows(s => s.filter(x => x.id !== offerId));
+    } else {
+      alert(j?.error ?? "Failed");
+    }
+  }
+
   return (
     <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-6 text-white/90">
       <div className="flex items-center gap-2">
@@ -62,13 +76,14 @@ export default function MyOffersPage() {
               <Th>GEO</Th>
               <Th>Vertical</Th>
               <Th>Mode</Th>
+              <Th>Action</Th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="p-6 text-white/60">Loading…</td></tr>
+              <tr><td colSpan={6} className="p-6 text-white/60">Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={5} className="p-6 text-white/60">No approved offers yet</td></tr>
+              <tr><td colSpan={6} className="p-6 text-white/60">No approved offers yet</td></tr>
             ) : rows.map((r) => (
               <tr key={r.id} className="border-t border-white/10">
                 <Td className="font-medium">{r.title}</Td>
@@ -76,6 +91,15 @@ export default function MyOffersPage() {
                 <Td>{r.geo}</Td>
                 <Td>{r.vertical}</Td>
                 <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
+                <Td>
+                  <button
+                    onClick={() => complete(r.id)}
+                    className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 hover:bg-white/15"
+                    title="Скрыть из «Мои офферы»"
+                  >
+                    Завершить
+                  </button>
+                </Td>
               </tr>
             ))}
           </tbody>

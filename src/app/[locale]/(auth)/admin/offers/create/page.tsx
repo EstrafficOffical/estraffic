@@ -1,199 +1,167 @@
-// src/app/[locale]/(auth)/admin/offers/create/page.tsx
-'use client';
+// src/app/[locale]/admin/offers/page.tsx
+"use client";
 
-import React, { useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import NavDrawer from "@/app/components/NavDrawer";
 
-type Mode = "Auto" | "Manual";
+type AdminOffer = {
+  id: string;
+  title: string;
+  cpa: number | null;
+  geo: string;
+  vertical: string;
+  mode: "Auto" | "Manual";
+  status: "ACTIVE" | "ARCHIVED" | "PAUSED";
+  hidden: boolean;
+  createdAt: string;
+};
 
-export default function CreateOfferPage() {
+export default function AdminOffersPage() {
   const pathname = usePathname();
   const locale = (pathname?.split("/")?.[1] || "ru") as string;
-  const router = useRouter();
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [rows, setRows] = useState<AdminOffer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
 
-  const [form, setForm] = useState({
-    title: "",
-    tag: "",
-    geo: "",
-    vertical: "",
-    cpa: "",
-    kpi1: "",
-    kpi2: "",
-    mode: "Manual" as Mode,
-    targetUrl: "",
-  });
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg(null);
-    setLoading(true);
-    try {
-      const payload = {
-        title: form.title.trim(),
-        tag: form.tag.trim() || null,
-        geo: form.geo.trim(),
-        vertical: form.vertical.trim(),
-        cpa: form.cpa ? Number(form.cpa) : null,
-        kpi1: form.kpi1 ? Number(form.kpi1) : null,
-        kpi2: form.kpi2 ? Number(form.kpi2) : null,
-        mode: form.mode,
-        targetUrl: form.targetUrl.trim() || null,
-      };
-
-      const res = await fetch("/api/admin/offers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to create offer");
+  // загрузка списка (админ видит и скрытые)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const r = await fetch("/api/admin/offers/list", { cache: "no-store" });
+        const j = await r.json();
+        if (!alive) return;
+        setRows(Array.isArray(j?.items) ? j.items : []);
+      } finally {
+        if (alive) setLoading(false);
       }
+    })();
+    return () => { alive = false; };
+  }, []);
 
-      setMsg("Оффер создан");
-      // по желанию — переход на список офферов
-      setTimeout(() => router.push(`/${locale}/offers`), 700);
-    } catch (err: any) {
-      setMsg(err?.message || "Ошибка");
-    } finally {
-      setLoading(false);
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return rows;
+    return rows.filter(r =>
+      `${r.title} ${r.geo} ${r.vertical} ${r.status}`.toLowerCase().includes(s)
+    );
+  }, [rows, q]);
+
+  // тумблер скрыть/показать
+  async function setHidden(offerId: string, hidden: boolean) {
+    const r = await fetch("/api/admin/offers/hide", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ offerId, hidden }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.ok) {
+      alert(j?.error ?? "Failed");
+      return;
     }
+    setRows(s => s.map(x => (x.id === offerId ? { ...x, hidden } : x)));
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-4 text-white/90 space-y-6">
-      {/* Кнопка-«звезда» для бокового меню */}
+    <section className="relative mx-auto max-w-7xl px-4 py-8 space-y-6 text-white/90">
+      {/* шапка */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
           aria-label="Open navigation"
           className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/20 border border-white/40"
-          title="Меню"
         >
-          ★
+          <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/80" aria-hidden>
+            <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
+          </svg>
         </button>
-        <span className="font-semibold">Estrella</span>
+        <span className="font-semibold text-white">Estrella</span>
       </div>
 
-      <h1 className="text-3xl font-bold">Создать оффер</h1>
+      <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Admin · Offers</h1>
 
-      <form
-        onSubmit={submit}
-        className="rounded-2xl border border-white/15 bg-white/5 p-4 backdrop-blur-md space-y-4"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Title" required>
-            <input
-              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.title}
-              onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))}
-              required
-            />
-          </Field>
-          <Field label="Tag">
-            <input
-              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.tag}
-              onChange={(e) => setForm((s) => ({ ...s, tag: e.target.value }))}
-              placeholder="internal tag"
-            />
-          </Field>
-          <Field label="GEO" required>
-            <input
-              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.geo}
-              onChange={(e) => setForm((s) => ({ ...s, geo: e.target.value }))}
-              placeholder="US, UA, ..."
-              required
-            />
-          </Field>
-          <Field label="Vertical" required>
-            <input
-              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.vertical}
-              onChange={(e) => setForm((s) => ({ ...s, vertical: e.target.value }))}
-              placeholder="Finance, Dating, ..."
-              required
-            />
-          </Field>
-          <Field label="CPA ($)">
-            <input
-              type="number"
-              step="0.01"
-              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.cpa}
-              onChange={(e) => setForm((s) => ({ ...s, cpa: e.target.value }))}
-              placeholder="например 50"
-            />
-          </Field>
-          <Field label="KPI1">
-            <input
-              type="number"
-              step="0.01"
-              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.kpi1}
-              onChange={(e) => setForm((s) => ({ ...s, kpi1: e.target.value }))}
-            />
-          </Field>
-          <Field label="KPI2">
-            <input
-              type="number"
-              step="0.01"
-              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.kpi2}
-              onChange={(e) => setForm((s) => ({ ...s, kpi2: e.target.value }))}
-            />
-          </Field>
-          <Field label="Mode" required>
-            <select
-              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.mode}
-              onChange={(e) => setForm((s) => ({ ...s, mode: e.target.value as Mode }))}
-            >
-              <option value="Manual">Manual</option>
-              <option value="Auto">Auto</option>
-            </select>
-          </Field>
-          <Field label="Target URL">
-            <input
-              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.targetUrl}
-              onChange={(e) => setForm((s) => ({ ...s, targetUrl: e.target.value }))}
-              placeholder="https://..."
-            />
-          </Field>
+      {/* поиск */}
+      <div className="flex gap-3">
+        <div className="relative flex-1">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search (title, geo, vertical, status)…"
+            className="w-full rounded-xl px-10 py-3 outline-none bg-zinc-900 text-white placeholder:text-white/50 border border-white/15 backdrop-blur-xl focus:ring-2 focus:ring-white/20"
+          />
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/60">🔎</span>
         </div>
+      </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 hover:bg-white/15 disabled:opacity-60"
-          >
-            {loading ? "Сохраняю..." : "Создать"}
-          </button>
-          {msg && <span className="text-white/70 text-sm">{msg}</span>}
-        </div>
-      </form>
+      {/* таблица */}
+      <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
+        <table className="min-w-full text-sm">
+          <thead className="text-white/70">
+            <tr className="text-left">
+              <Th>Offer</Th>
+              <Th>CPA</Th>
+              <Th>GEO</Th>
+              <Th>Vertical</Th>
+              <Th>Mode</Th>
+              <Th>Status</Th>
+              <Th>Hidden</Th>
+              <Th>Action</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={8} className="p-6 text-white/60">Loading…</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={8} className="p-6 text-white/60">No offers</td></tr>
+            ) : (
+              filtered.map(r => (
+                <tr key={r.id} className="border-t border-white/10">
+                  <Td className="font-medium">{r.title}</Td>
+                  <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
+                  <Td>{r.geo}</Td>
+                  <Td>{r.vertical}</Td>
+                  <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
+                  <Td><Badge tone={r.status === "ACTIVE" ? "green" : r.status === "PAUSED" ? "orange" : "default"}>{r.status}</Badge></Td>
+                  <Td>{r.hidden ? <Badge tone="orange">hidden</Badge> : <Badge tone="green">visible</Badge>}</Td>
+                  <Td>
+                    <button
+                      onClick={() => setHidden(r.id, !r.hidden)}
+                      className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
+                    >
+                      {r.hidden ? "Show" : "Hide"}
+                    </button>
+                  </Td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} isAdmin />
-    </div>
+    </section>
   );
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <div className="mb-1 text-sm text-white/70">
-        {label} {required ? <span className="text-red-400">*</span> : null}
-      </div>
-      {children}
-    </label>
-  );
+/* ——— UI утилиты ——— */
+function Th({ children }: { children: React.ReactNode }) {
+  return <th className="px-4 py-3 font-semibold">{children}</th>;
+}
+function Td({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-4 py-3 ${className ?? ""}`}>{children}</td>;
+}
+function Badge({
+  children, tone = "default",
+}: { children: React.ReactNode; tone?: "default" | "green" | "blue" | "orange" }) {
+  const map: Record<string, string> = {
+    default: "bg-white/10 border-white/20 text-white/80",
+    green: "bg-emerald-400/15 border-emerald-400/30 text-emerald-200",
+    blue: "bg-sky-400/15 border-sky-400/30 text-sky-200",
+    orange: "bg-amber-400/15 border-amber-400/30 text-amber-200",
+  };
+  return <span className={`inline-flex items-center rounded-lg px-2 py-1 text-xs border ${map[tone]}`}>{children}</span>;
 }
