@@ -15,9 +15,6 @@ type OfferRow = {
   mode: "Auto" | "Manual";
   requested: boolean;
   approved: boolean;
-  // опционально — бэкенд может вернуть эти поля сразу
-  capDaily?: number | null;
-  targetUrl?: string | null;
 };
 
 export default function OffersPage() {
@@ -28,12 +25,6 @@ export default function OffersPage() {
   const [rows, setRows] = useState<OfferRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  // поля для ссылки
-  const [subId, setSubId] = useState("");
-  const [link, setLink] = useState<string | null>(null);
-  const [linkBusy, setLinkBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -50,14 +41,16 @@ export default function OffersPage() {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const filtered = useMemo(() => {
-    const ql = q.trim().toLowerCase();
-    if (!ql) return rows;
-    return rows.filter(r =>
-      `${r.title} ${r.geo} ${r.vertical}`.toLowerCase().includes(ql)
+    const s = q.trim().toLowerCase();
+    if (!s) return rows;
+    return rows.filter((r) =>
+      `${r.title} ${r.geo} ${r.vertical}`.toLowerCase().includes(s)
     );
   }, [rows, q]);
 
@@ -69,26 +62,9 @@ export default function OffersPage() {
     });
     const data = await res.json();
     if (res.ok && data?.ok) {
-      setRows(s => s.map(r => r.id === offerId ? { ...r, requested: true } : r));
+      setRows((s) => s.map((r) => (r.id === offerId ? { ...r, requested: true } : r)));
     } else {
       alert(data?.error ?? "Request error");
-    }
-  }
-
-  async function getLink(offerId: string) {
-    setLinkBusy(true);
-    setLink(null);
-    try {
-      const r = await fetch("/api/offers/link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerId, subId }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (r.ok && j?.link) setLink(j.link);
-      else alert(j?.error ?? "Link error");
-    } finally {
-      setLinkBusy(false);
     }
   }
 
@@ -141,24 +117,31 @@ export default function OffersPage() {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={8} className="p-6 text-white/60">No offers</td></tr>
             ) : (
-              filtered.map((r) => {
-                const isOpen = expanded === r.id;
-                return (
-                  <FragmentRow
-                    key={r.id}
-                    row={r}
-                    isOpen={isOpen}
-                    onToggle={() => setExpanded(isOpen ? null : r.id)}
-                    onRequest={() => requestOffer(r.id)}
-                    canGetLink={r.approved}
-                    subId={subId}
-                    setSubId={setSubId}
-                    link={link}
-                    linkBusy={linkBusy}
-                    onGetLink={() => getLink(r.id)}
-                  />
-                );
-              })
+              filtered.map((r) => (
+                <tr key={r.id} className="border-t border-white/10">
+                  <Td className="font-medium">{r.title}</Td>
+                  <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
+                  <Td>{r.geo}</Td>
+                  <Td>{r.vertical}</Td>
+                  <Td>{r.kpi1 ?? "0.00"}</Td>
+                  <Td>{r.kpi2 ?? "0.00"}</Td>
+                  <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
+                  <Td>
+                    {r.approved ? (
+                      <Badge tone="green">Approved</Badge>
+                    ) : r.requested ? (
+                      <Badge tone="orange">Requested</Badge>
+                    ) : (
+                      <button
+                        onClick={() => requestOffer(r.id)}
+                        className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
+                      >
+                        Request
+                      </button>
+                    )}
+                  </Td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
@@ -166,113 +149,6 @@ export default function OffersPage() {
 
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} />
     </section>
-  );
-}
-
-function FragmentRow(props: {
-  row: any;
-  isOpen: boolean;
-  onToggle: () => void;
-  onRequest: () => void;
-  canGetLink: boolean;
-  subId: string;
-  setSubId: (v: string) => void;
-  link: string | null;
-  linkBusy: boolean;
-  onGetLink: () => void;
-}) {
-  const r = props.row as any;
-  return (
-    <>
-      <tr className="border-t border-white/10">
-        <Td className="font-medium">
-          <button
-            onClick={props.onToggle}
-            className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 mr-2"
-            title={props.isOpen ? "Hide details" : "Show details"}
-          >
-            {props.isOpen ? "−" : "+"}
-          </button>
-          {r.title}
-        </Td>
-        <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
-        <Td>{r.geo}</Td>
-        <Td>{r.vertical}</Td>
-        <Td>{r.kpi1 ?? "0.00"}</Td>
-        <Td>{r.kpi2 ?? "0.00"}</Td>
-        <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
-        <Td>
-          {r.approved ? (
-            <Badge tone="green">Approved</Badge>
-          ) : r.requested ? (
-            <Badge tone="orange">Requested</Badge>
-          ) : (
-            <button
-              onClick={props.onRequest}
-              className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
-            >
-              Request
-            </button>
-          )}
-        </Td>
-      </tr>
-
-      {props.isOpen && (
-        <tr className="bg-white/3">
-          <td colSpan={8} className="px-4 py-3 border-t border-white/10">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <div className="text-white/60 text-xs">GEO / Vertical</div>
-                <div className="mt-1 font-medium">{r.geo} • {r.vertical}</div>
-                <div className="mt-3 text-white/60 text-xs">KPI</div>
-                <div className="font-mono">{r.kpi1 ?? "—"} / {r.kpi2 ?? "—"}</div>
-                {r.capDaily != null && (
-                  <>
-                    <div className="mt-3 text-white/60 text-xs">Daily Cap</div>
-                    <div className="font-medium">{r.capDaily}</div>
-                  </>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <div className="text-white/60 text-xs">Target URL</div>
-                <div className="mt-1 truncate text-sm">{r.targetUrl ?? "—"}</div>
-              </div>
-
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <div className="text-white/60 text-xs mb-1">Tracking Link</div>
-                {!props.canGetLink ? (
-                  <div className="text-sm text-white/60">Доступ появится после аппрува</div>
-                ) : (
-                  <>
-                    <div className="flex gap-2">
-                      <input
-                        placeholder="subId (optional)"
-                        value={props.subId}
-                        onChange={(e) => props.setSubId(e.target.value)}
-                        className="flex-1 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm outline-none"
-                      />
-                      <button
-                        onClick={props.onGetLink}
-                        disabled={props.linkBusy}
-                        className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
-                      >
-                        {props.linkBusy ? "..." : "Get link"}
-                      </button>
-                    </div>
-                    {props.link && (
-                      <div className="mt-2 break-all rounded-lg border border-white/10 bg-black/30 p-2 text-xs">
-                        {props.link}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
   );
 }
 
