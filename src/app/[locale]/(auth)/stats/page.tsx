@@ -45,6 +45,24 @@ export default function StatsPage() {
   const locale = (pathname?.split('/')?.[1] || 'ru') as string;
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // ADMIN?
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/session', { cache: 'no-store' });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (stop) return;
+        setIsAdmin((j?.user as any)?.role === 'ADMIN');
+      } catch {/* ignore */}
+    })();
+    return () => { stop = true; };
+  }, []);
+
+  const showMoney = isAdmin;
+
   // период
   const [from, setFrom] = useState<string>(() => {
     const d = new Date();
@@ -113,18 +131,31 @@ export default function StatsPage() {
 
   const kpis = useMemo(() => {
     const s = summary || { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0 };
+    if (showMoney) {
+      return [
+        { title: 'Доход', value: fmtMoney(s.revenue ?? 0) },
+        { title: 'Клики', value: (s.clicks ?? 0).toLocaleString() },
+        { title: 'Конверсии', value: (s.conversions ?? 0).toLocaleString() },
+        { title: 'EPC', value: fmtMoney(s.epc ?? 0) },
+        { title: 'CR', value: `${(((s.cr ?? 0) * 100) || 0).toFixed(2)}%` },
+      ];
+    }
+    // USER: без денег
     return [
-      { title: 'Доход', value: fmtMoney(s.revenue ?? 0) },
       { title: 'Клики', value: (s.clicks ?? 0).toLocaleString() },
       { title: 'Конверсии', value: (s.conversions ?? 0).toLocaleString() },
-      { title: 'EPC', value: fmtMoney(s.epc ?? 0) },
       { title: 'CR', value: `${(((s.cr ?? 0) * 100) || 0).toFixed(2)}%` },
     ];
-  }, [summary]);
+  }, [summary, showMoney]);
+
+  // colSpans для заглушек
+  const byOfferCols = showMoney ? 6 : 4;
+  const bySourceCols = showMoney ? 6 : 4;
+  const timeCols = showMoney ? 4 : 3;
 
   return (
     <section className="relative mx-auto max-w-7xl space-y-8 px-4 py-8 text-white/90">
-      {/* шапка в едином стиле */}
+      {/* шапка */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
@@ -169,7 +200,7 @@ export default function StatsPage() {
       </div>
 
       {/* KPI */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
+      <div className={`grid gap-4 ${showMoney ? 'sm:grid-cols-5' : 'sm:grid-cols-3'}`}>
         {kpis.map((k) => (
           <div key={k.title} className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 backdrop-blur-md">
             <div className="text-sm text-white/75">{k.title}</div>
@@ -180,21 +211,24 @@ export default function StatsPage() {
 
       {/* By Offer */}
       <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
-        <div className="border-b border-white/10 px-4 py-3">
+        <div className="border-b border-white/10 px  -4 py-3">
           <h2 className="text-xl font-semibold">By Offer</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-white/5 text-white/70">
               <tr className="text-left">
-                <Th>Offer</Th><Th>Clicks</Th><Th>Conv</Th><Th>Revenue</Th><Th>EPC</Th><Th>CR</Th>
+                <Th>Offer</Th><Th>Clicks</Th><Th>Conv</Th>
+                {showMoney && <Th>Revenue</Th>}
+                {showMoney && <Th>EPC</Th>}
+                <Th>CR</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
               {loading ? (
-                <tr><td colSpan={6} className="p-6 text-white/60">Загрузка…</td></tr>
+                <tr><td colSpan={byOfferCols} className="p-6 text-white/60">Загрузка…</td></tr>
               ) : byOffer.length === 0 ? (
-                <tr><td colSpan={6} className="p-6 text-white/60">Пусто</td></tr>
+                <tr><td colSpan={byOfferCols} className="p-6 text-white/60">Пусто</td></tr>
               ) : (
                 byOffer.map((r) => (
                   <tr key={r.offerId}>
@@ -206,8 +240,8 @@ export default function StatsPage() {
                     </Td>
                     <Td>{r.clicks}</Td>
                     <Td>{r.conversions}</Td>
-                    <Td>{fmtMoney(r.revenue)}</Td>
-                    <Td>{fmtMoney(r.epc)}</Td>
+                    {showMoney && <Td>{fmtMoney(r.revenue)}</Td>}
+                    {showMoney && <Td>{fmtMoney(r.epc)}</Td>}
                     <Td>{((r.cr ?? 0) * 100).toFixed(2)}%</Td>
                   </tr>
                 ))
@@ -226,22 +260,25 @@ export default function StatsPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-white/5 text-white/70">
               <tr className="text-left">
-                <Th>Source</Th><Th>Clicks</Th><Th>Conv</Th><Th>Revenue</Th><Th>EPC</Th><Th>CR</Th>
+                <Th>Source</Th><Th>Clicks</Th><Th>Conv</Th>
+                {showMoney && <Th>Revenue</Th>}
+                {showMoney && <Th>EPC</Th>}
+                <Th>CR</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
               {loading ? (
-                <tr><td colSpan={6} className="p-6 text-white/60">Загрузка…</td></tr>
+                <tr><td colSpan={bySourceCols} className="p-6 text-white/60">Загрузка…</td></tr>
               ) : bySource.length === 0 ? (
-                <tr><td colSpan={6} className="p-6 text-white/60">Пусто</td></tr>
+                <tr><td colSpan={bySourceCols} className="p-6 text-white/60">Пусто</td></tr>
               ) : (
                 bySource.map((r, i) => (
                   <tr key={(r.source ?? '') + i}>
                     <Td className="font-mono">{r.source ?? '—'}</Td>
                     <Td>{r.clicks}</Td>
                     <Td>{r.conversions}</Td>
-                    <Td>{fmtMoney(r.revenue)}</Td>
-                    <Td>{fmtMoney(r.epc)}</Td>
+                    {showMoney && <Td>{fmtMoney(r.revenue)}</Td>}
+                    {showMoney && <Td>{fmtMoney(r.epc)}</Td>}
                     <Td>{((r.cr ?? 0) * 100).toFixed(2)}%</Td>
                   </tr>
                 ))
@@ -251,36 +288,38 @@ export default function StatsPage() {
         </div>
       </section>
 
-      {/* By Event */}
-      <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
-        <div className="border-b border-white/10 px-4 py-3">
-          <h2 className="text-xl font-semibold">By Event</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-white/5 text-white/70">
-              <tr className="text-left">
-                <Th>Type</Th><Th>Conversions</Th><Th>Revenue</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/10">
-              {loading ? (
-                <tr><td colSpan={3} className="p-6 text-white/60">Загрузка…</td></tr>
-              ) : byEvent.length === 0 ? (
-                <tr><td colSpan={3} className="p-6 text-white/60">Пусто</td></tr>
-              ) : (
-                byEvent.map((r) => (
-                  <tr key={r.type}>
-                    <Td><Badge>{r.type}</Badge></Td>
-                    <Td>{r.conversions}</Td>
-                    <Td>{fmtMoney(r.revenue)}</Td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {/* By Event — только ADMIN */}
+      {showMoney && (
+        <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
+          <div className="border-b border-white/10 px-4 py-3">
+            <h2 className="text-xl font-semibold">By Event</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-white/5 text-white/70">
+                <tr className="text-left">
+                  <Th>Type</Th><Th>Conversions</Th><Th>Revenue</Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {loading ? (
+                  <tr><td colSpan={3} className="p-6 text-white/60">Загрузка…</td></tr>
+                ) : byEvent.length === 0 ? (
+                  <tr><td colSpan={3} className="p-6 text-white/60">Пусто</td></tr>
+                ) : (
+                  byEvent.map((r) => (
+                    <tr key={r.type}>
+                      <Td><Badge>{r.type}</Badge></Td>
+                      <Td>{r.conversions}</Td>
+                      <Td>{fmtMoney(r.revenue)}</Td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* Timeseries */}
       <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
@@ -291,21 +330,22 @@ export default function StatsPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-white/5 text-white/70">
               <tr className="text-left">
-                <Th>Day</Th><Th>Clicks</Th><Th>Conv</Th><Th>Revenue</Th>
+                <Th>Day</Th><Th>Clicks</Th><Th>Conv</Th>
+                {showMoney && <Th>Revenue</Th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
               {loading ? (
-                <tr><td colSpan={4} className="p-6 text-white/60">Загрузка…</td></tr>
+                <tr><td colSpan={timeCols} className="p-6 text-white/60">Загрузка…</td></tr>
               ) : series.length === 0 ? (
-                <tr><td colSpan={4} className="p-6 text-white/60">Пусто</td></tr>
+                <tr><td colSpan={timeCols} className="p-6 text-white/60">Пусто</td></tr>
               ) : (
                 series.map((p) => (
                   <tr key={p.day}>
                     <Td>{p.day}</Td>
                     <Td>{p.clicks}</Td>
                     <Td>{p.conversions}</Td>
-                    <Td>{fmtMoney(p.revenue)}</Td>
+                    {showMoney && <Td>{fmtMoney(p.revenue)}</Td>}
                   </tr>
                 ))
               )}

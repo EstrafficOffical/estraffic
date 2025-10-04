@@ -135,7 +135,8 @@ export default function NavDrawer({
                 {A("/offers", "Офферы")}
                 {A("/offers/mine", "Мои офферы")}
                 {A("/finance", "Финансы")}
-                {A("/conversions", "Конверсии")}
+                {/* Конверсии показываем только ADMIN */}
+                {isAdmin && A("/conversions", "Конверсии")}
                 {/* Пункт «Постбеки» убрали отсюда — только для админа ниже */}
               </div>
             )}

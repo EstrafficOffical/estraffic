@@ -1,4 +1,4 @@
-// src/app/[locale]/conversions/page.tsx
+// src/app/[locale]/(auth)/conversions/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -46,6 +46,23 @@ export default function ConversionsPage() {
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
 
+  // ADMIN?
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/auth/session", { cache: "no-store" });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (stop) return;
+        setIsAdmin((j?.user as any)?.role === "ADMIN");
+      } catch {/* ignore */}
+    })();
+    return () => { stop = true; };
+  }, []);
+
+  // тестовая форма (ADMIN only)
   const [testOpen, setTestOpen] = useState(false);
   const [test, setTest] = useState({
     click_id: "",
@@ -74,7 +91,9 @@ export default function ConversionsPage() {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -103,9 +122,8 @@ export default function ConversionsPage() {
     e.preventDefault();
     setTestMsg(null);
     const params = new URLSearchParams({
-      // отправляем и новый camelCase, и старый snake_case на всякий случай
       clickId: test.click_id,
-      click_id: test.click_id,
+      click_id: test.click_id, // legacy
       offer_id: test.offer_id,
       event: test.event,
       amount: test.amount,
@@ -167,46 +185,47 @@ export default function ConversionsPage() {
                className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20" />
       </div>
 
-      {/* тестовый постбек */}
-      <div className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xl p-4">
-        <button
-          className="text-sm text-white/80 underline underline-offset-4"
-          onClick={() => setTestOpen((v) => !v)}
-        >
-          {testOpen ? "Скрыть" : "Показать"} форму тестового постбека
-        </button>
-        {testOpen && (
-          <form onSubmit={sendTestPostback} className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input label="click_id" value={test.click_id} onChange={(v) => onTestChange("click_id", v)} />
-            <Input label="offer_id" value={test.offer_id} onChange={(v) => onTestChange("offer_id", v)} />
-            <div>
-              <label className="block text-sm mb-1 text-white/80">event</label>
-              <select
-                value={test.event}
-                onChange={(e) => onTestChange("event", e.target.value)}
-                className="w-full rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-2 outline-none focus:ring-2 focus:ring-white/20"
-              >
-                <option>REG</option>
-                <option>DEP</option>
-                <option>SALE</option>
-                <option>REBILL</option>
-                <option>LEAD</option>
-              </select>
-            </div>
-            <Input label="amount" type="number" value={test.amount} onChange={(v) => onTestChange("amount", v)} />
-            <Input label="currency" value={test.currency} onChange={(v) => onTestChange("currency", v)} />
-            <Input label="tx_id" value={test.tx_id} onChange={(v) => onTestChange("tx_id", v)} />
-            {/* новый секрет */}
-            <Input label="secret" type="password" value={test.secret} onChange={(v) => onTestChange("secret", v)} />
-            <div className="md:col-span-3 flex items-center gap-3">
-              <button className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15" type="submit">
-                Отправить тестовый постбек
-              </button>
-              {testMsg && <span className="text-sm text-white/70">{testMsg}</span>}
-            </div>
-          </form>
-        )}
-      </div>
+      {/* тестовый постбек — только для ADMIN */}
+      {isAdmin && (
+        <div className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xl p-4">
+          <button
+            className="text-sm text-white/80 underline underline-offset-4"
+            onClick={() => setTestOpen((v) => !v)}
+          >
+            {testOpen ? "Скрыть" : "Показать"} форму тестового постбека
+          </button>
+          {testOpen && (
+            <form onSubmit={sendTestPostback} className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input label="click_id" value={test.click_id} onChange={(v) => onTestChange("click_id", v)} />
+              <Input label="offer_id" value={test.offer_id} onChange={(v) => onTestChange("offer_id", v)} />
+              <div>
+                <label className="block text-sm mb-1 text-white/80">event</label>
+                <select
+                  value={test.event}
+                  onChange={(e) => onTestChange("event", e.target.value)}
+                  className="w-full rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-2 outline-none focus:ring-2 focus:ring-white/20"
+                >
+                  <option>REG</option>
+                  <option>DEP</option>
+                  <option>SALE</option>
+                  <option>REBILL</option>
+                  <option>LEAD</option>
+                </select>
+              </div>
+              <Input label="amount" type="number" value={test.amount} onChange={(v) => onTestChange("amount", v)} />
+              <Input label="currency" value={test.currency} onChange={(v) => onTestChange("currency", v)} />
+              <Input label="tx_id" value={test.tx_id} onChange={(v) => onTestChange("tx_id", v)} />
+              <Input label="secret" type="password" value={test.secret} onChange={(v) => onTestChange("secret", v)} />
+              <div className="md:col-span-3 flex items-center gap-3">
+                <button className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15" type="submit">
+                  Отправить тестовый постбек
+                </button>
+                {testMsg && <span className="text-sm text-white/70">{testMsg}</span>}
+              </div>
+            </form>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
         <table className="min-w-full text-sm">
