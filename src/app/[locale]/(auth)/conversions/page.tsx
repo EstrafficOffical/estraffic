@@ -7,7 +7,7 @@ import NavDrawer from "@/app/components/NavDrawer";
 
 type Conv = {
   id: string;
-  createdAt: string | null; // бывает битая/пустая
+  createdAt: string | null;
   user: { id: string; email: string | null; name: string | null } | null;
   offer: { id: string; title: string } | null;
   subId: string | null;
@@ -21,14 +21,12 @@ type Conv = {
 const TYPES = ["ALL", "REG", "DEP", "REBILL", "SALE", "LEAD"] as const;
 type TypeFilter = (typeof TYPES)[number];
 
-/* ── безопасные форматтеры ───────────────────────────────────────────── */
-
+/* ── форматтеры ───────────────────────────────────────────── */
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
   const d = new Date(iso);
   return isNaN(d.getTime()) ? "—" : d.toLocaleString();
 }
-
 function fmtMoney(n: number | string | null | undefined) {
   const num = Number(n);
   if (!isFinite(num)) return "—";
@@ -56,6 +54,7 @@ export default function ConversionsPage() {
     amount: "0",
     currency: "USD",
     tx_id: "",
+    secret: "", // ← добавили
   });
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const onTestChange = (k: keyof typeof test, v: string) =>
@@ -75,9 +74,7 @@ export default function ConversionsPage() {
         if (alive) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   const filtered = useMemo(() => {
@@ -89,7 +86,6 @@ export default function ConversionsPage() {
       const rowType = (r.type ?? r.event) as TypeFilter | undefined;
       if (type !== "ALL" && rowType !== type) return false;
 
-      // безопасно считаем время; если плохая дата — пропускаем фильтр по датам
       const t = r.createdAt ? new Date(r.createdAt).getTime() : NaN;
       if (isFinite(t)) {
         if (t < fromTs || t > toTs) return false;
@@ -106,24 +102,24 @@ export default function ConversionsPage() {
   async function sendTestPostback(e: React.FormEvent) {
     e.preventDefault();
     setTestMsg(null);
-    const url =
-      "/api/postbacks/ingest?" +
-      new URLSearchParams({
-        click_id: test.click_id,
-        offer_id: test.offer_id,
-        event: test.event,
-        amount: test.amount,
-        currency: test.currency,
-        tx_id: test.tx_id,
-      }).toString();
+    const params = new URLSearchParams({
+      // отправляем и новый camelCase, и старый snake_case на всякий случай
+      clickId: test.click_id,
+      click_id: test.click_id,
+      offer_id: test.offer_id,
+      event: test.event,
+      amount: test.amount,
+      currency: test.currency,
+      tx_id: test.tx_id,
+    });
+    if (test.secret) params.set("secret", test.secret);
+
+    const url = "/api/postbacks/ingest?" + params.toString();
     try {
       const res = await fetch(url);
       const data = await res.json();
-      if (res.ok && data?.ok) {
-        setTestMsg("✅ Отправлено: " + data.id);
-      } else {
-        setTestMsg("⚠️ " + (data?.error ?? "Ошибка"));
-      }
+      if (res.ok && data?.ok) setTestMsg("✅ Отправлено: " + data.id);
+      else setTestMsg("⚠️ " + (data?.error ?? "Ошибка"));
     } catch {
       setTestMsg("⚠️ Сеть недоступна");
     }
@@ -163,25 +159,15 @@ export default function ConversionsPage() {
           onChange={(e) => setType(e.target.value as TypeFilter)}
           className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20"
         >
-          {TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
+          {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        <input
-          type="date"
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20"
-        />
-        <input
-          type="date"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20"
-        />
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
+               className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20" />
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
+               className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20" />
       </div>
 
-      {/* тестовый постбек (можно скрыть через фиче-флаг) */}
+      {/* тестовый постбек */}
       <div className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xl p-4">
         <button
           className="text-sm text-white/80 underline underline-offset-4"
@@ -210,6 +196,8 @@ export default function ConversionsPage() {
             <Input label="amount" type="number" value={test.amount} onChange={(v) => onTestChange("amount", v)} />
             <Input label="currency" value={test.currency} onChange={(v) => onTestChange("currency", v)} />
             <Input label="tx_id" value={test.tx_id} onChange={(v) => onTestChange("tx_id", v)} />
+            {/* новый секрет */}
+            <Input label="secret" type="password" value={test.secret} onChange={(v) => onTestChange("secret", v)} />
             <div className="md:col-span-3 flex items-center gap-3">
               <button className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15" type="submit">
                 Отправить тестовый постбек

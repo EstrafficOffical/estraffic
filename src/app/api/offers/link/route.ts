@@ -1,4 +1,3 @@
-// src/app/api/offers/link/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -10,36 +9,50 @@ export async function POST(req: Request) {
   }
   const userId = (session.user as any).id as string;
 
-  const { offerId, subId } = await req.json().catch(() => ({}));
+  const { offerId, subId, direct } = await req.json().catch(() => ({}));
   if (!offerId) {
     return NextResponse.json({ error: "NO_OFFER" }, { status: 400 });
   }
 
-  // оффер должен существовать и быть не скрытым
   const offer = await prisma.offer.findUnique({
     where: { id: offerId, hidden: false },
-    select: { id: true, targetUrl: true },
-  } as any);
-
-  if (!offer || !offer.targetUrl) {
+    select: { id: true, targetUrl: true, trackingTemplate: true },
+  });
+  if (!offer) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
-  // строим абсолютный URL на наш редирект: https://<host>/r/:offerId?...
-  const host =
-    process.env.APP_URL || // предпочтительно укажи APP_URL в Vercel env (например, https://www.estraffic.com)
-    (req.headers.get("x-forwarded-host") ||
-      req.headers.get("host") ||
-      "").replace(/\/+$/, "");
-  const proto =
-    process.env.APP_URL?.startsWith("http") ||
-    (req.headers.get("x-forwarded-proto") || "https");
+  // Утилита для подстановки плейсхолдеров
+  const fill = (tpl: string) =>
+    tpl
+      .replace(/{offerId}/g, offer.id)
+      .replace(/{userId}/g, userId)
+      .replace(/{subId}/g, encodeURIComponent(String(subId ?? "")));
 
-  const base = `https://${host}`;
-  const params = new URLSearchParams();
+  // DIRECT: отдать «сырую» ссылку от партнёра/шаблон без нашего редиректа
+  if (direct) {
+    const base = offer.trackingTemplate || offer.targetUrl || "";
+    if (!base) {
+      return NextResponse.json(
+        { error: "NO_TEMPLATE_OR_TARGET_URL" },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json({ link: fill(base) });
+  }
+
+  // REDIRECT (рекомендуется): считаем клик и 302 на target
+  const origin =
+    process.env.APP_URL ||
+    (typeof window === "undefined"
+      ? "https://your-domain.tld"
+      : window.location.origin);
+
+  const params = new URLSearchParams({
+    user: userId,
+  });
   if (subId) params.set("sub_id", String(subId));
-  if (userId) params.set("user", String(userId));
 
-  const link = `${base}/r/${offer.id}${params.toString() ? "?" + params.toString() : ""}`;
+  const link = `${origin}/r/${offer.id}?${params.toString()}`;
   return NextResponse.json({ link });
 }
