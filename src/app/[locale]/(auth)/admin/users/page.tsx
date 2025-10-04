@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import RowActions from "./row-actions";
-import NavToggle from "@/app/components/NavToggle";
+import ClientHeader from "./ClientHeader"; // ← добавили
 
 type SearchParams = {
   q?: string;
@@ -71,11 +71,9 @@ export default async function Page({
         id: true,
         email: true,
         name: true,
-        // может отсутствовать в сгенерённых типах
         // @ts-ignore
         telegram: true,
         role: true,
-        // может отсутствовать в сгенерённых типах
         // @ts-ignore
         status: true,
         createdAt: true,
@@ -84,15 +82,12 @@ export default async function Page({
   ]);
 
   const users = prismaUsers as unknown as UserRow[];
-
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   return (
     <div className="p-4 space-y-4 text-white">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Пользователи</h1>
-        <NavToggle />
-      </div>
+      {/* клиентский хедер с бургером и drawer */}
+      <ClientHeader locale={locale} />
 
       <form className="flex flex-wrap gap-2">
         <input
