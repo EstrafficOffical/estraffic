@@ -11,7 +11,6 @@ type MyOffer = {
   geo: string;
   vertical: string;
   mode: "Auto" | "Manual";
-  // дополнительные поля (могут прийти сразу)
   capDaily?: number | null;
   targetUrl?: string | null;
 };
@@ -29,7 +28,6 @@ export default function MyOffersPage() {
   // поля для ссылки
   const [subId, setSubId] = useState("");
   const [link, setLink] = useState<string | null>(null);
-  const [linkBusy, setLinkBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -66,21 +64,14 @@ export default function MyOffersPage() {
     }
   }
 
-  async function getLink(offerId: string) {
-    setLinkBusy(true);
-    setLink(null);
-    try {
-      const r = await fetch("/api/offers/link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerId, subId }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (r.ok && j?.link) setLink(j.link);
-      else alert(j?.error ?? "Link error");
-    } finally {
-      setLinkBusy(false);
-    }
+  function buildLink(offerId: string) {
+    const base =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_SITE_URL || "";
+    const u = new URL(`${base}/r/${offerId}`);
+    if (subId) u.searchParams.set("subid", subId);
+    setLink(u.toString());
   }
 
   return (
@@ -142,8 +133,7 @@ export default function MyOffersPage() {
                     subId={subId}
                     setSubId={setSubId}
                     link={link}
-                    linkBusy={linkBusy}
-                    onGetLink={() => getLink(r.id)}
+                    onBuildLink={() => buildLink(r.id)}
                   />
                 );
               })
@@ -165,8 +155,7 @@ function FragmentRow(props: {
   subId: string;
   setSubId: (v: string) => void;
   link: string | null;
-  linkBusy: boolean;
-  onGetLink: () => void;
+  onBuildLink: () => void;
 }) {
   const r = props.row;
   return (
@@ -229,11 +218,10 @@ function FragmentRow(props: {
                     className="flex-1 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm outline-none"
                   />
                   <button
-                    onClick={props.onGetLink}
-                    disabled={props.linkBusy}
-                    className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
+                    onClick={props.onBuildLink}
+                    className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15"
                   >
-                    {props.linkBusy ? "..." : "Get link"}
+                    Build link
                   </button>
                 </div>
                 {props.link && (

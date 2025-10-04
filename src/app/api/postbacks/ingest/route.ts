@@ -4,13 +4,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import type { ConversionType } from "@prisma/client";
 
-// Важно: Нужен Node-рантайм (а не edge), чтобы работали Buffer/crypto.
 export const runtime = "nodejs";
 
-/** Секрет берём из .env */
 const SERVER_SECRET = process.env.POSTBACK_SHARED_SECRET ?? "";
 
-/** Маппинг event → Prisma enum */
+/** Маппинг строки в ConversionType */
 function toConvType(ev?: string | null): ConversionType | null {
   const v = (ev ?? "").toUpperCase();
   if (v === "REG") return "REG";
@@ -21,63 +19,91 @@ function toConvType(ev?: string | null): ConversionType | null {
   return null;
 }
 
-/** Тайминг-безопасное сравнение двух hex-строк */
-function safeEqualHex(aHex: string, bHex: string): boolean {
+/** HMAC проверки: сравнение тайминг-безопасно */
+function safeEqual(a: Uint8Array, b: Uint8Array): boolean {
   try {
-    const a = Buffer.from(aHex, "hex");
-    const b = Buffer.from(bHex, "hex");
     if (a.length !== b.length) return false;
-    // Преобразуем к ArrayBufferView, чтобы удовлетворить TS-тайпинги
-    const av = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
-    const bv = new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
-    return timingSafeEqual(av, bv);
+    return timingSafeEqual(a, b);
   } catch {
     return false;
   }
 }
 
-/** Верификация подписи (если передана) или поля secret */
-function verifyAuth(rawBody: string, jsonSecret?: string | null, headerSig?: string | null): boolean {
+/** Проверка авторизации */
+function isAuthorized(
+  rawBody: string,
+  bodySecret?: string | null,
+  signature?: string | null
+) {
   if (!SERVER_SECRET) return false;
 
-  // Если есть HMAC-подпись — проверяем её приоритетно
-  if (headerSig && headerSig.length >= 16) {
-    const expected = createHmac("sha256", SERVER_SECRET).update(rawBody).digest("hex");
-    return safeEqualHex(headerSig, expected);
+  // Приоритет: HMAC по сырому телу
+  if (signature && signature.length >= 16) {
+    const expectedBuf = createHmac("sha256", SERVER_SECRET)
+      .update(rawBody)
+      .digest(); // Buffer
+    const givenBuf = Buffer.from(signature.trim(), "hex"); // Buffer
+
+    // Приводим Buffer → Uint8Array (TS доволен)
+    const expected = new Uint8Array(
+      expectedBuf.buffer,
+      expectedBuf.byteOffset,
+      expectedBuf.byteLength
+    );
+    const given = new Uint8Array(
+      givenBuf.buffer,
+      givenBuf.byteOffset,
+      givenBuf.byteLength
+    );
+
+    return safeEqual(expected, given);
   }
-  // Иначе проверяем секрет в самом JSON
-  return typeof jsonSecret === "string" && safeEqualHex(jsonSecret, Buffer.from(SERVER_SECRET).toString("hex"));
+
+  // Фоллбек: plain secret в JSON
+  return bodySecret === SERVER_SECRET;
 }
 
-/** Общая логика обработки запроса */
-async function handle(body: any, rawBody: string, req: NextRequest) {
-  // Авторизация: либо X-Signature, либо { secret }
-  const headerSig = req.headers.get("x-signature");
-  if (!verifyAuth(rawBody, body?.secret, headerSig)) {
+/** Нормализация имен полей: принимаем snake и camel */
+function pick<T = string>(obj: any, keys: string[]): T | undefined {
+  for (const k of keys) {
+    const v = obj?.[k];
+    if (v != null && v !== "") return v as T;
+  }
+  return undefined;
+}
+
+async function handle(req: NextRequest, raw: string, body: any) {
+  const signature = req.headers.get("x-signature");
+  if (!isAuthorized(raw, body?.secret, signature)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const offerId = String(body?.offer_id ?? "").trim();
-  const txId = String(body?.tx_id ?? "").trim();
-  if (!offerId || !txId) {
-    return NextResponse.json({ ok: false, error: "offer_id and tx_id are required" }, { status: 400 });
+  const offerId = String(pick(body, ["offer_id", "offerId"]) ?? "").trim();
+  const txId = (pick<string>(body, ["tx_id", "txId"]) ?? "").toString().trim();
+  const event = pick<string>(body, ["event", "type"]);
+  const convType = toConvType(event ?? null);
+
+  const amountRaw = pick(body, ["amount"]);
+  const amount = amountRaw != null ? Number(amountRaw) : null;
+  const currency = pick<string>(body, ["currency"]);
+
+  const clickId = pick<string>(body, ["click_id", "clickId"]);
+  const subId = pick<string>(body, ["sub_id", "subId"]);
+
+  if (!offerId) {
+    return NextResponse.json({ ok: false, error: "offer_id required" }, { status: 400 });
   }
+  // txId может отсутствовать — тогда создадим «сырую» запись без идемпотентности.
 
-  const convType = toConvType(body?.event ?? null);
-  const amount = body?.amount != null ? Number(body.amount) : null;
-  const currency = body?.currency ? String(body.currency) : null;
-  const subId = body?.subId ? String(body.subId) : null;
-  const clickId = body?.clickId ? String(body.clickId) : null;
-
-  // Пытаемся найти userId по последнему клику (subId/clickId)
+  // Пытаемся найти userId по клику (приоритет click_id)
   let userId: string | null = null;
-  if (subId || clickId) {
+  if (clickId || subId) {
     const lastClick = await prisma.click.findFirst({
       where: {
-        offerId: offerId,
+        offerId,
         OR: [
-          subId ? { subId } : undefined,
           clickId ? { clickId } : undefined,
+          subId ? { subId } : undefined,
         ].filter(Boolean) as any,
       },
       orderBy: { createdAt: "desc" },
@@ -86,32 +112,49 @@ async function handle(body: any, rawBody: string, req: NextRequest) {
     userId = lastClick?.userId ?? null;
   }
 
-  // Идемпотентный upsert по (offerId, txId)
-  const saved = await prisma.conversion.upsert({
-    where: { offerId_txId: { offerId, txId } },
-    update: {
-      userId,
-      type: convType ?? undefined,
+  // Если есть txId — идемпотентный upsert
+  if (txId) {
+    const saved = await prisma.conversion.upsert({
+      where: { offerId_txId: { offerId, txId } },
+      update: {
+        userId: userId ?? undefined,
+        type: convType ?? undefined,
+        amount: amount ?? undefined,
+        currency: currency ?? undefined,
+        subId: subId ?? undefined,
+      },
+      create: {
+        offerId,
+        txId,
+        userId: userId ?? undefined,
+        type: convType ?? "REG",
+        amount: amount ?? undefined,
+        currency: currency ?? undefined,
+        subId: subId ?? undefined,
+      },
+      select: { id: true },
+    });
+
+    return NextResponse.json({ ok: true, id: saved.id });
+  }
+
+  // Иначе — обычный insert
+  const created = await prisma.conversion.create({
+    data: {
+      offerId,
+      txId: null,
+      userId: userId ?? undefined,
+      type: convType ?? "REG",
       amount: amount ?? undefined,
       currency: currency ?? undefined,
-    },
-    create: {
-      offerId,
-      txId,
-      userId,
-      type: convType ?? "REG",
-      amount: amount,
-      currency: currency,
       subId: subId ?? undefined,
-      // createdAt проставится по default(now())
     },
-    select: { id: true, offerId: true, txId: true },
+    select: { id: true },
   });
 
-  return NextResponse.json({ ok: true, id: saved.id });
+  return NextResponse.json({ ok: true, id: created.id });
 }
 
-/** POST — основной путь (используем сырой body для HMAC) */
 export async function POST(req: NextRequest) {
   try {
     const raw = await req.text();
@@ -121,31 +164,30 @@ export async function POST(req: NextRequest) {
     } catch {
       return NextResponse.json({ ok: false, error: "invalid json" }, { status: 400 });
     }
-    return await handle(data, raw, req);
+    return await handle(req, raw, data);
   } catch (e) {
     console.error("POST /postbacks/ingest error", e);
     return NextResponse.json({ ok: false, error: "internal" }, { status: 500 });
   }
 }
 
-/** GET — вспомогательный для отладки (параметры в query) */
+// Для отладки: поддержим GET c query
 export async function GET(req: NextRequest) {
   try {
     const u = new URL(req.url);
-    const params = u.searchParams;
+    const p = u.searchParams;
     const body = {
-      secret: params.get("secret"),
-      offer_id: params.get("offer_id"),
-      tx_id: params.get("tx_id"),
-      event: params.get("event"),
-      amount: params.get("amount") ? Number(params.get("amount")) : undefined,
-      currency: params.get("currency"),
-      subId: params.get("subId"),
-      clickId: params.get("clickId"),
+      secret: p.get("secret"),
+      offer_id: p.get("offer_id"),
+      tx_id: p.get("tx_id"),
+      event: p.get("event"),
+      amount: p.get("amount"),
+      currency: p.get("currency"),
+      click_id: p.get("click_id") ?? p.get("clickId"),
+      sub_id: p.get("sub_id") ?? p.get("subId"),
     };
-    // Для HMAC при GET берём «сырой» аналог — строку query без подписи (условно)
     const raw = JSON.stringify(body);
-    return await handle(body, raw, req);
+    return await handle(req, raw, body);
   } catch (e) {
     console.error("GET /postbacks/ingest error", e);
     return NextResponse.json({ ok: false, error: "internal" }, { status: 500 });
