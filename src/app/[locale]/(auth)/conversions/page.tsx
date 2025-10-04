@@ -21,7 +21,6 @@ type Conv = {
 const TYPES = ["ALL", "REG", "DEP", "REBILL", "SALE", "LEAD"] as const;
 type TypeFilter = (typeof TYPES)[number];
 
-/* ── форматтеры ───────────────────────────────────────────── */
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -46,23 +45,9 @@ export default function ConversionsPage() {
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
 
-  // ADMIN?
-  const [isAdmin, setIsAdmin] = useState(false);
-  useEffect(() => {
-    let stop = false;
-    (async () => {
-      try {
-        const r = await fetch("/api/auth/session", { cache: "no-store" });
-        if (!r.ok) return;
-        const j = await r.json();
-        if (stop) return;
-        setIsAdmin((j?.user as any)?.role === "ADMIN");
-      } catch {/* ignore */}
-    })();
-    return () => { stop = true; };
-  }, []);
+  // флаг роли — чтобы и форму теста показать только админу
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
-  // тестовая форма (ADMIN only)
   const [testOpen, setTestOpen] = useState(false);
   const [test, setTest] = useState({
     click_id: "",
@@ -71,22 +56,32 @@ export default function ConversionsPage() {
     amount: "0",
     currency: "USD",
     tx_id: "",
-    secret: "", // ← добавили
+    secret: "",
   });
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const onTestChange = (k: keyof typeof test, v: string) =>
     setTest((s) => ({ ...s, [k]: v }));
 
+  // ← ВАЖНО: на старте забираем сессию, узнаём роль и грузим список (админу — с ?all=1)
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         setLoading(true);
-        const res = await fetch("/api/postbacks/conversions", { cache: "no-store" });
+
+        const sess = await fetch("/api/auth/session", { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => ({}));
+        const admin = (sess?.user as any)?.role === "ADMIN";
+        if (alive) setIsAdmin(!!admin);
+
+        const apiUrl = admin
+          ? "/api/postbacks/conversions?all=1"
+          : "/api/postbacks/conversions";
+
+        const res = await fetch(apiUrl, { cache: "no-store" });
         const data = (res.ok ? await res.json() : []) as Conv[];
         if (alive) setRows(Array.isArray(data) ? data : []);
-      } catch {
-        if (alive) setRows([]);
       } finally {
         if (alive) setLoading(false);
       }
@@ -109,7 +104,6 @@ export default function ConversionsPage() {
       if (isFinite(t)) {
         if (t < fromTs || t > toTs) return false;
       }
-
       if (!ql) return true;
       const hay = (
         `${r.offer?.title ?? ""} ${r.offer?.id ?? ""} ${r.user?.email ?? ""} ${r.user?.name ?? ""} ${r.subId ?? ""} ${r.txId ?? ""}`
@@ -122,8 +116,8 @@ export default function ConversionsPage() {
     e.preventDefault();
     setTestMsg(null);
     const params = new URLSearchParams({
-      clickId: test.click_id,
-      click_id: test.click_id, // legacy
+      clickId: test.click_id,   // camelCase
+      click_id: test.click_id,  // legacy
       offer_id: test.offer_id,
       event: test.event,
       amount: test.amount,
@@ -185,7 +179,7 @@ export default function ConversionsPage() {
                className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20" />
       </div>
 
-      {/* тестовый постбек — только для ADMIN */}
+      {/* тестовый постбек — только админу */}
       {isAdmin && (
         <div className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xl p-4">
           <button
