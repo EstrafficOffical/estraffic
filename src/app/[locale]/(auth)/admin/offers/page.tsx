@@ -1,4 +1,3 @@
-// src/app/[locale]/(auth)/admin/offers/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -13,6 +12,10 @@ type AdminOfferRow = {
   cpa: number | null;
   mode: "Auto" | "Manual";
   hidden: boolean;
+  capDaily?: number | null;
+  capMonthly?: number | null;
+  minDeposit?: number | null;
+  holdDays?: number | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -34,6 +37,7 @@ export default function AdminOffersListPage() {
       const r = await fetch("/api/admin/offers/list", { cache: "no-store" });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.error || "Failed");
+      // ожидаем поля капов/миндепа/холда; если API их не отдаёт — UI покажет "—"
       setRows(Array.isArray(j?.items) ? j.items : []);
     } catch (e: any) {
       setMsg(e?.message || "Ошибка загрузки");
@@ -43,9 +47,7 @@ export default function AdminOffersListPage() {
     }
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -72,6 +74,9 @@ export default function AdminOffersListPage() {
       setMsg(e?.message || "Не удалось изменить видимость");
     }
   }
+
+  const fmtMoney = (n?: number | null) =>
+    n == null ? "—" : `$${Number(n).toFixed(2)}`;
 
   return (
     <section className="relative mx-auto max-w-7xl px-4 py-8 space-y-6 text-white/90">
@@ -102,7 +107,7 @@ export default function AdminOffersListPage() {
         </div>
         <button
           onClick={load}
-          className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 hover:bg-white/15"
+          className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 hover:bg:white/15"
         >
           Обновить
         </button>
@@ -123,36 +128,44 @@ export default function AdminOffersListPage() {
               <Th>Vertical</Th>
               <Th>CPA</Th>
               <Th>Mode</Th>
+              <Th>Cap D</Th>
+              <Th>Cap M</Th>
+              <Th>MinDep</Th>
+              <Th>Hold</Th>
               <Th>Hidden</Th>
               <Th>Action</Th>
             </tr>
           </thead>
-        <tbody>
-          {loading ? (
-            <tr><td colSpan={7} className="p-6 text-white/60">Загрузка…</td></tr>
-          ) : filtered.length === 0 ? (
-            <tr><td colSpan={7} className="p-6 text-white/60">Пусто</td></tr>
-          ) : (
-            filtered.map((r) => (
-              <tr key={r.id} className="border-t border-white/10">
-                <Td className="font-medium">{r.title}</Td>
-                <Td>{r.geo}</Td>
-                <Td>{r.vertical}</Td>
-                <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
-                <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
-                <Td>{r.hidden ? <Badge tone="orange">Yes</Badge> : <Badge tone="green">No</Badge>}</Td>
-                <Td>
-                  <button
-                    onClick={() => setHidden(r.id, !r.hidden)}
-                    className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
-                  >
-                    {r.hidden ? "Показать" : "Скрыть"}
-                  </button>
-                </Td>
-              </tr>
-            ))
-          )}
-        </tbody>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={11} className="p-6 text-white/60">Загрузка…</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={11} className="p-6 text-white/60">Пусто</td></tr>
+            ) : (
+              filtered.map((r) => (
+                <tr key={r.id} className="border-t border-white/10">
+                  <Td className="font-medium">{r.title}</Td>
+                  <Td>{r.geo}</Td>
+                  <Td>{r.vertical}</Td>
+                  <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
+                  <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
+                  <Td>{r.capDaily ?? "—"}</Td>
+                  <Td>{r.capMonthly ?? "—"}</Td>
+                  <Td>{fmtMoney(r.minDeposit)}</Td>
+                  <Td>{r.holdDays ?? "—"}</Td>
+                  <Td>{r.hidden ? <Badge tone="orange">Yes</Badge> : <Badge tone="green">No</Badge>}</Td>
+                  <Td>
+                    <button
+                      onClick={() => setHidden(r.id, !r.hidden)}
+                      className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
+                    >
+                      {r.hidden ? "Показать" : "Скрыть"}
+                    </button>
+                  </Td>
+                </tr>
+              ))
+            )}
+          </tbody>
         </table>
       </div>
 
@@ -162,10 +175,10 @@ export default function AdminOffersListPage() {
 }
 
 function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-3 font-semibold">{children}</th>;
+  return <th className="px-4 py-3 font-semibold whitespace-nowrap">{children}</th>;
 }
 function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 ${className ?? ""}`}>{children}</td>;
+  return <td className={`px-4 py-3 whitespace-nowrap ${className ?? ""}`}>{children}</td>;
 }
 function Badge({
   children, tone = "default",

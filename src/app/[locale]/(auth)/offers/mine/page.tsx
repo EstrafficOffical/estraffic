@@ -12,6 +12,10 @@ type MyOffer = {
   vertical: string;
   mode: "Auto" | "Manual";
   capDaily?: number | null;
+  capMonthly?: number | null;
+  minDeposit?: number | null;
+  holdDays?: number | null;
+  rules?: string | null;
   targetUrl?: string | null;
 };
 
@@ -24,6 +28,10 @@ export default function MyOffersPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  // для персонального линка
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
 
   // поля для ссылки
   const [subId, setSubId] = useState("");
@@ -39,6 +47,26 @@ export default function MyOffersPage() {
         if (alive) setRows(Array.isArray(data) ? data : data.items ?? []);
       } finally {
         if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // тянем сессию, чтобы знать userId и вшивать его в линк
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setUserLoading(true);
+        const r = await fetch("/api/auth/session", { cache: "no-store" });
+        const j = (await r.json()) as any;
+        if (!alive) return;
+        const id = j?.user?.id as string | undefined;
+        setUserId(id ?? null);
+      } catch {
+        setUserId(null);
+      } finally {
+        if (alive) setUserLoading(false);
       }
     })();
     return () => { alive = false; };
@@ -69,10 +97,21 @@ export default function MyOffersPage() {
       typeof window !== "undefined"
         ? window.location.origin
         : process.env.NEXT_PUBLIC_SITE_URL || "";
-    const u = new URL(`${base}/r/${offerId}`);
+
+    // основной чистый путь /r; если вдруг он выключен, поменяй на /api/r
+    const u = new URL(`/r/${offerId}`, base);
     if (subId) u.searchParams.set("subid", subId);
+    if (userId) u.searchParams.set("user", userId);
     setLink(u.toString());
   }
+
+  function copyLink() {
+    if (!link) return;
+    try { navigator.clipboard?.writeText(link); } catch {}
+  }
+
+  const fmtMoney = (n?: number | null) =>
+    n == null ? "—" : `$${Number(n).toFixed(2)}`;
 
   return (
     <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-6 text-white/90">
@@ -134,6 +173,10 @@ export default function MyOffersPage() {
                     setSubId={setSubId}
                     link={link}
                     onBuildLink={() => buildLink(r.id)}
+                    onCopyLink={copyLink}
+                    canBuild={!userLoading && !!userId}
+                    userReadyMsg={userLoading ? "Loading user…" : userId ? "" : "No user id"}
+                    fmtMoney={fmtMoney}
                   />
                 );
               })
@@ -156,6 +199,10 @@ function FragmentRow(props: {
   setSubId: (v: string) => void;
   link: string | null;
   onBuildLink: () => void;
+  onCopyLink: () => void;
+  canBuild: boolean;
+  userReadyMsg: string;
+  fmtMoney: (n?: number | null) => string;
 }) {
   const r = props.row;
   return (
@@ -190,24 +237,41 @@ function FragmentRow(props: {
         <tr className="bg-white/3">
           <td colSpan={6} className="px-4 py-3 border-t border-white/10">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Блок 1: GEO/Vertical + Cap */}
               <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="text-white/60 text-xs">GEO / Vertical</div>
                 <div className="mt-1 font-medium">
                   {r.geo} • {r.vertical}
                 </div>
-                {r.capDaily != null && (
-                  <>
-                    <div className="mt-3 text-white/60 text-xs">Daily Cap</div>
-                    <div className="font-medium">{r.capDaily}</div>
-                  </>
+                {(r.capDaily != null || r.capMonthly != null) && (
+                  <div className="mt-3">
+                    <div className="text-white/60 text-xs">Caps</div>
+                    <div className="font-medium">
+                      Daily: {r.capDaily ?? "—"}{r.capMonthly != null ? ` • Monthly: ${r.capMonthly}` : ""}
+                    </div>
+                  </div>
+                )}
+                {r.minDeposit != null && (
+                  <div className="mt-3">
+                    <div className="text-white/60 text-xs">Min. Deposit</div>
+                    <div className="font-medium">{props.fmtMoney(r.minDeposit)}</div>
+                  </div>
+                )}
+                {r.holdDays != null && (
+                  <div className="mt-3">
+                    <div className="text-white/60 text-xs">Hold (days)</div>
+                    <div className="font-medium">{r.holdDays}</div>
+                  </div>
                 )}
               </div>
 
+              {/* Блок 2: Target URL */}
               <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="text-white/60 text-xs">Target URL</div>
                 <div className="mt-1 truncate text-sm">{r.targetUrl ?? "—"}</div>
               </div>
 
+              {/* Блок 3: Tracking Link */}
               <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="text-white/60 text-xs mb-1">Tracking Link</div>
                 <div className="flex gap-2">
@@ -219,9 +283,19 @@ function FragmentRow(props: {
                   />
                   <button
                     onClick={props.onBuildLink}
-                    className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15"
+                    disabled={!props.canBuild}
+                    className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
+                    title={props.userReadyMsg}
                   >
                     Build link
+                  </button>
+                  <button
+                    onClick={props.onCopyLink}
+                    disabled={!props.link}
+                    className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
+                    title="Copy"
+                  >
+                    Copy
                   </button>
                 </div>
                 {props.link && (
@@ -230,6 +304,14 @@ function FragmentRow(props: {
                   </div>
                 )}
               </div>
+
+              {/* Блок 4: Rules (во всю ширину на мобильном) */}
+              {r.rules && (
+                <div className="md:col-span-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="text-white/60 text-xs">Rules</div>
+                  <div className="mt-1 whitespace-pre-wrap text-sm leading-6">{r.rules}</div>
+                </div>
+              )}
             </div>
           </td>
         </tr>
