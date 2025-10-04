@@ -1,15 +1,16 @@
-'use client';
+// src/app/[locale]/(auth)/stats/page.tsx
+"use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import { usePathname } from 'next/navigation';
-import NavDrawer from '@/app/components/NavDrawer';
+import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import NavDrawer from "@/app/components/NavDrawer";
 
 type Summary = {
   clicks: number;
-  conversions: number; // оставляем, но не показываем в KPI
+  conversions: number;
   revenue: number;
   epc: number;
-  cr: number; // доля (0..1)
+  cr: number;
 };
 
 type ByOfferRow = {
@@ -24,7 +25,7 @@ type ByOfferRow = {
 };
 
 type BySourceRow = {
-  source: string | null; // subId
+  source: string | null;
   clicks: number;
   conversions: number;
   revenue: number;
@@ -33,7 +34,7 @@ type BySourceRow = {
 };
 
 type ByEventRow = {
-  type: 'REG' | 'DEP' | 'REBILL' | 'SALE' | 'LEAD' | string;
+  type: string; // REG | DEP | SALE | ...
   conversions: number;
   revenue: number;
 };
@@ -42,10 +43,9 @@ type SeriesPoint = { day: string; clicks: number; conversions: number; revenue: 
 
 export default function StatsPage() {
   const pathname = usePathname();
-  const locale = (pathname?.split('/')?.[1] || 'ru') as string;
+  const locale = (pathname?.split("/")?.[1] || "ru") as string;
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // период
   const [from, setFrom] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -53,10 +53,6 @@ export default function StatsPage() {
   });
   const [to, setTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
-  // роль
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  // данные
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [byOffer, setByOffer] = useState<ByOfferRow[]>([]);
@@ -65,17 +61,6 @@ export default function StatsPage() {
   const [series, setSeries] = useState<SeriesPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // узнаём роль (ADMIN?)
-  useEffect(() => {
-    (async () => {
-      const s = await fetch('/api/auth/session', { cache: 'no-store' })
-        .then(r => r.json())
-        .catch(() => ({} as any));
-      setIsAdmin(((s?.user as any)?.role === 'ADMIN'));
-    })();
-  }, []);
-
-  // грузим статистику
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -84,16 +69,16 @@ export default function StatsPage() {
         setError(null);
 
         const qs = new URLSearchParams({
-          from: new Date(from + 'T00:00:00Z').toISOString(),
-          to: new Date(to + 'T23:59:59Z').toISOString(),
+          from: new Date(from + "T00:00:00Z").toISOString(),
+          to: new Date(to + "T23:59:59Z").toISOString(),
         }).toString();
 
         const [sRes, oRes, srcRes, eRes, tRes] = await Promise.all([
-          fetch(`/api/stats/summary?${qs}`, { cache: 'no-store' }),
-          fetch(`/api/stats/by-offer?${qs}`, { cache: 'no-store' }),
-          fetch(`/api/stats/by-source?${qs}`, { cache: 'no-store' }),
-          fetch(`/api/stats/by-event?${qs}`, { cache: 'no-store' }),
-          fetch(`/api/stats/timeseries?${qs}`, { cache: 'no-store' }),
+          fetch(`/api/stats/summary?${qs}`, { cache: "no-store" }),
+          fetch(`/api/stats/by-offer?${qs}`, { cache: "no-store" }),
+          fetch(`/api/stats/by-source?${qs}`, { cache: "no-store" }),
+          fetch(`/api/stats/by-event?${qs}`, { cache: "no-store" }),
+          fetch(`/api/stats/timeseries?${qs}`, { cache: "no-store" }),
         ]);
 
         const sJson = await sRes.json().catch(() => null);
@@ -105,7 +90,7 @@ export default function StatsPage() {
         if (!alive) return;
 
         setSummary(
-          sRes.ok && sJson && typeof sJson === 'object'
+          sRes.ok && sJson && typeof sJson === "object"
             ? (sJson as Summary)
             : { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0 },
         );
@@ -114,7 +99,7 @@ export default function StatsPage() {
         setByEvent(eRes.ok ? (Array.isArray(eJson?.items) ? eJson.items : (Array.isArray(eJson) ? eJson : [])) : []);
         setSeries(tRes.ok ? (Array.isArray(tJson?.series) ? tJson.series : (Array.isArray(tJson) ? tJson : [])) : []);
       } catch {
-        if (alive) setError('Не удалось загрузить статистику');
+        if (alive) setError("Не удалось загрузить статистику");
       } finally {
         if (alive) setLoading(false);
       }
@@ -125,39 +110,19 @@ export default function StatsPage() {
   const fmtMoney = (n: number) =>
     `$${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  // извлекаем REG/DEP из byEvent
-  const regCount = useMemo(
-    () => (byEvent.find(e => e.type === 'REG')?.conversions ?? 0),
-    [byEvent],
-  );
-  const depCount = useMemo(
-    () => (byEvent.find(e => e.type === 'DEP')?.conversions ?? 0),
-    [byEvent],
-  );
-
-  // KPI: для пользователя — Clicks, REG, DEP, CR; для админа добавляем Revenue/EPC
   const kpis = useMemo(() => {
-    const s = summary || { clicks: 0, revenue: 0, epc: 0, cr: 0 };
-    const items: { title: string; value: string }[] = [];
-
-    if (isAdmin) {
-      items.push({ title: 'Доход', value: fmtMoney(s.revenue ?? 0) });
-      items.push({ title: 'EPC', value: fmtMoney(s.epc ?? 0) });
-    }
-
-    items.push(
-      { title: 'Клики', value: (s.clicks ?? 0).toLocaleString() },
-      { title: 'REG', value: regCount.toLocaleString() },
-      { title: 'DEP', value: depCount.toLocaleString() },
-      { title: 'CR', value: `${(((s.cr ?? 0) * 100) || 0).toFixed(2)}%` },
-    );
-
-    return items;
-  }, [summary, regCount, depCount, isAdmin]);
+    const s = summary || { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0 };
+    return [
+      { title: "Доход", value: fmtMoney(s.revenue ?? 0) },
+      { title: "Клики", value: (s.clicks ?? 0).toLocaleString() },
+      { title: "Конверсии", value: (s.conversions ?? 0).toLocaleString() },
+      { title: "EPC", value: fmtMoney(s.epc ?? 0) },
+      { title: "CR", value: `${(((s.cr ?? 0) * 100) || 0).toFixed(2)}%` },
+    ];
+  }, [summary]);
 
   return (
     <section className="relative mx-auto max-w-7xl space-y-8 px-4 py-8 text-white/90">
-      {/* шапка */}
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
@@ -173,7 +138,6 @@ export default function StatsPage() {
 
       <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Statistics</h1>
 
-      {/* фильтры */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-white/15 bg-white/5 p-3">
           <label className="mb-1 block text-sm text-white/70">From</label>
@@ -196,13 +160,13 @@ export default function StatsPage() {
         <div className="rounded-2xl border border-white/15 bg-white/5 p-3">
           <label className="mb-1 block text-sm text-white/70">Status</label>
           <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-white/70">
-            {loading ? 'Загрузка…' : 'Готово'}
+            {loading ? "Загрузка…" : "Готово"}
           </div>
         </div>
       </div>
 
       {/* KPI */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-5 md:grid-cols-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
         {kpis.map((k) => (
           <div key={k.title} className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 backdrop-blur-md">
             <div className="text-sm text-white/75">{k.title}</div>
@@ -234,7 +198,9 @@ export default function StatsPage() {
                     <Td>
                       <div className="flex flex-col">
                         <span className="font-medium">{r.title}</span>
-                        <span className="text-xs text-white/50">{r.offerId}{r.tag ? ` · #${r.tag}` : ''}</span>
+                        <span className="text-xs text-white/50">
+                          {r.offerId}{r.tag ? ` · #${r.tag}` : ""}
+                        </span>
                       </div>
                     </Td>
                     <Td>{r.clicks}</Td>
@@ -269,8 +235,8 @@ export default function StatsPage() {
                 <tr><td colSpan={6} className="p-6 text-white/60">Пусто</td></tr>
               ) : (
                 bySource.map((r, i) => (
-                  <tr key={(r.source ?? '') + i}>
-                    <Td className="font-mono">{r.source ?? '—'}</Td>
+                  <tr key={(r.source ?? "") + i}>
+                    <Td className="font-mono">{r.source ?? "—"}</Td>
                     <Td>{r.clicks}</Td>
                     <Td>{r.conversions}</Td>
                     <Td>{fmtMoney(r.revenue)}</Td>
@@ -284,7 +250,7 @@ export default function StatsPage() {
         </div>
       </section>
 
-      {/* By Event (содержит REG/DEP детально) */}
+      {/* By Event */}
       <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
         <div className="border-b border-white/10 px-4 py-3">
           <h2 className="text-xl font-semibold">By Event</h2>
@@ -356,12 +322,11 @@ export default function StatsPage() {
   );
 }
 
-/* ——— утилиты UI ——— */
 function Th({ children }: { children: React.ReactNode }) {
   return <th className="px-4 py-3 font-semibold">{children}</th>;
 }
 function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 ${className ?? ''}`}>{children}</td>;
+  return <td className={`px-4 py-3 ${className ?? ""}`}>{children}</td>;
 }
 function Badge({ children }: { children: React.ReactNode }) {
   return <span className="inline-flex items-center rounded-lg border border-white/15 bg-white/10 px-2 py-1 text-xs">{children}</span>;

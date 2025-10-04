@@ -1,29 +1,32 @@
+// src/app/api/admin/offers/update/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
+function bad(msg: string, code = 400) {
+  return NextResponse.json({ error: msg }, { status: code });
+}
+
 export async function POST(req: Request) {
   const session = await auth();
-  const role = (session?.user as any)?.role;
-  if (!session?.user || role !== "ADMIN") {
-    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!session?.user || (session.user as any).role !== "ADMIN") {
+    return bad("UNAUTHORIZED", 401);
   }
 
-  const { id, patch } = await req.json().catch(()=>({}));
-  if (!id || typeof patch !== "object") {
-    return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 });
-  }
+  const body = await req.json().catch(() => ({}));
+  const { offerId, cpa, capDaily, capMonthly } = body || {};
+  if (!offerId) return bad("MISSING offerId");
 
-  // Белый список полей для апдейта
   const data: any = {};
-  for (const k of ["title","tag","geo","vertical","cpa","kpi1","kpi2","mode","targetUrl"] as const) {
-    if (k in patch) data[k] = patch[k];
-  }
+  if (cpa != null) data.cpa = Number(cpa);
+  if (capDaily != null) data.capDaily = parseInt(String(capDaily));
+  if (capMonthly != null) data.capMonthly = parseInt(String(capMonthly));
 
-  try {
-    await prisma.offer.update({ where: { id }, data });
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.code || "DB_ERROR" }, { status: 400 });
-  }
+  const upd = await prisma.offer.update({
+    where: { id: offerId },
+    data,
+    select: { id: true, title: true, cpa: true, capDaily: true, capMonthly: true },
+  });
+
+  return NextResponse.json({ ok: true, offer: upd });
 }

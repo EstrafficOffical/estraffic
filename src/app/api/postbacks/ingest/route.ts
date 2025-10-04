@@ -1,195 +1,133 @@
 // src/app/api/postbacks/ingest/route.ts
-import { NextResponse, type NextRequest } from "next/server";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { ConversionType } from "@prisma/client";
 
-export const runtime = "nodejs";
+const SERVER_SECRET =
+  process.env.POSTBACK_SHARED_SECRET || process.env.SERVER_SECRET;
 
-const SERVER_SECRET = process.env.POSTBACK_SHARED_SECRET ?? "";
-
-/** Маппинг строки в ConversionType */
-function toConvType(ev?: string | null): ConversionType | null {
-  const v = (ev ?? "").toUpperCase();
-  if (v === "REG") return "REG";
-  if (v === "DEP" || v === "DEPOSIT") return "DEP";
-  if (v === "REBILL") return "REBILL";
-  if (v === "SALE" || v === "PURCHASE") return "SALE";
-  if (v === "LEAD") return "LEAD";
-  return null;
+/** Удобные ответы */
+function ok(data: any) {
+  return NextResponse.json({ ok: true, ...data });
+}
+function bad(msg: string, code = 400) {
+  return NextResponse.json({ error: msg }, { status: code });
 }
 
-/** HMAC проверки: сравнение тайминг-безопасно */
-function safeEqual(a: Uint8Array, b: Uint8Array): boolean {
+/**
+ * Ингест постбеков.
+ * Правила:
+ * - авторизация простым секретом (?secret=...);
+ * - выплата идёт ТОЛЬКО на event=DEP;
+ * - капы: capDaily / capMonthly (оплаченные DEP за сегодня/месяц);
+ * - дубли по (offerId, txId) игнорируем (возвращаем существующую запись);
+ * - amount = 0 если кап переполнен (но конверсию записываем).
+ */
+export async function GET(req: Request) {
   try {
-    if (a.length !== b.length) return false;
-    return timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-}
+    const url = new URL(req.url);
 
-/** Проверка авторизации */
-function isAuthorized(
-  rawBody: string,
-  bodySecret?: string | null,
-  signature?: string | null
-) {
-  if (!SERVER_SECRET) return false;
+    // --- авторизация ---
+    const secret = url.searchParams.get("secret");
+    if (!SERVER_SECRET || secret !== SERVER_SECRET) {
+      return bad("UNAUTHORIZED", 401);
+    }
 
-  // Приоритет: HMAC по сырому телу
-  if (signature && signature.length >= 16) {
-    const expectedBuf = createHmac("sha256", SERVER_SECRET)
-      .update(rawBody)
-      .digest(); // Buffer
-    const givenBuf = Buffer.from(signature.trim(), "hex"); // Buffer
+    // --- входные поля (поддержка snake и camel) ---
+    const clickId =
+      url.searchParams.get("clickId") ||
+      url.searchParams.get("click_id") ||
+      undefined;
+    const offerId = url.searchParams.get("offer_id") || undefined;
+    const event = (url.searchParams.get("event") || "REG").toUpperCase() as
+      | "REG"
+      | "DEP"
+      | "REBILL"
+      | "SALE"
+      | "LEAD";
+    const txId = url.searchParams.get("tx_id") || undefined;
+    const currency = (url.searchParams.get("currency") || "USD").toUpperCase();
 
-    // Приводим Buffer → Uint8Array (TS доволен)
-    const expected = new Uint8Array(
-      expectedBuf.buffer,
-      expectedBuf.byteOffset,
-      expectedBuf.byteLength
-    );
-    const given = new Uint8Array(
-      givenBuf.buffer,
-      givenBuf.byteOffset,
-      givenBuf.byteLength
-    );
+    if (!clickId || !offerId) return bad("MISSING click_id or offer_id");
+    if (!txId) return bad("MISSING tx_id");
 
-    return safeEqual(expected, given);
-  }
-
-  // Фоллбек: plain secret в JSON
-  return bodySecret === SERVER_SECRET;
-}
-
-/** Нормализация имен полей: принимаем snake и camel */
-function pick<T = string>(obj: any, keys: string[]): T | undefined {
-  for (const k of keys) {
-    const v = obj?.[k];
-    if (v != null && v !== "") return v as T;
-  }
-  return undefined;
-}
-
-async function handle(req: NextRequest, raw: string, body: any) {
-  const signature = req.headers.get("x-signature");
-  if (!isAuthorized(raw, body?.secret, signature)) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  }
-
-  const offerId = String(pick(body, ["offer_id", "offerId"]) ?? "").trim();
-  const txId = (pick<string>(body, ["tx_id", "txId"]) ?? "").toString().trim();
-  const event = pick<string>(body, ["event", "type"]);
-  const convType = toConvType(event ?? null);
-
-  const amountRaw = pick(body, ["amount"]);
-  const amount = amountRaw != null ? Number(amountRaw) : null;
-  const currency = pick<string>(body, ["currency"]);
-
-  const clickId = pick<string>(body, ["click_id", "clickId"]);
-  const subId = pick<string>(body, ["sub_id", "subId"]);
-
-  if (!offerId) {
-    return NextResponse.json({ ok: false, error: "offer_id required" }, { status: 400 });
-  }
-  // txId может отсутствовать — тогда создадим «сырую» запись без идемпотентности.
-
-  // Пытаемся найти userId по клику (приоритет click_id)
-  let userId: string | null = null;
-  if (clickId || subId) {
-    const lastClick = await prisma.click.findFirst({
-      where: {
-        offerId,
-        OR: [
-          clickId ? { clickId } : undefined,
-          subId ? { subId } : undefined,
-        ].filter(Boolean) as any,
-      },
-      orderBy: { createdAt: "desc" },
-      select: { userId: true },
+    // --- найдём клик (привязка user/subId) ---
+    const click = await prisma.click.findFirst({
+      where: { clickId, offerId },
+      select: { userId: true, subId: true, offerId: true },
     });
-    userId = lastClick?.userId ?? null;
-  }
+    if (!click) return bad("CLICK_NOT_FOUND", 404);
 
-  // Если есть txId — идемпотентный upsert
-  if (txId) {
-    const saved = await prisma.conversion.upsert({
-      where: { offerId_txId: { offerId, txId } },
-      update: {
-        userId: userId ?? undefined,
-        type: convType ?? undefined,
-        amount: amount ?? undefined,
-        currency: currency ?? undefined,
-        subId: subId ?? undefined,
-      },
-      create: {
-        offerId,
-        txId,
-        userId: userId ?? undefined,
-        type: convType ?? "REG",
-        amount: amount ?? undefined,
-        currency: currency ?? undefined,
-        subId: subId ?? undefined,
-      },
+    // --- оффер ---
+    const offer = await prisma.offer.findFirst({
+      where: { id: offerId, hidden: false, status: "ACTIVE" },
+      select: { id: true, cpa: true, capDaily: true, capMonthly: true },
+    });
+    if (!offer) return bad("OFFER_NOT_AVAILABLE", 404);
+
+    // --- идемпотентность по (offerId, txId) ---
+    const existing = await prisma.conversion.findFirst({
+      where: { offerId: offer.id, txId },
       select: { id: true },
     });
+    if (existing) return ok({ id: existing.id, dedup: true });
 
-    return NextResponse.json({ ok: true, id: saved.id });
-  }
+    // --- расчёт выплаты ---
+    let payout = 0;
 
-  // Иначе — обычный insert
-  const created = await prisma.conversion.create({
-    data: {
-      offerId,
-      txId: null,
-      userId: userId ?? undefined,
-      type: convType ?? "REG",
-      amount: amount ?? undefined,
-      currency: currency ?? undefined,
-      subId: subId ?? undefined,
-    },
-    select: { id: true },
-  });
+    if (event === "DEP") {
+      const cpa = Number(offer.cpa ?? 0);
 
-  return NextResponse.json({ ok: true, id: created.id });
-}
+      // границы UTC (правильно для сравнения в БД)
+      const now = new Date();
+      const startOfDayUTC = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+      );
+      const startOfMonthUTC = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+      );
 
-export async function POST(req: NextRequest) {
-  try {
-    const raw = await req.text();
-    let data: any;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      return NextResponse.json({ ok: false, error: "invalid json" }, { status: 400 });
+      // сколько уже ОПЛАЧЕННЫХ DEP (amount > 0)
+      const wherePaidDep = {
+        offerId: offer.id,
+        type: "DEP" as const,
+        amount: { gt: 0 as any },
+      };
+
+      const [paidToday, paidMonth] = await Promise.all([
+        prisma.conversion.count({
+          where: { ...wherePaidDep, createdAt: { gte: startOfDayUTC } },
+        }),
+        prisma.conversion.count({
+          where: { ...wherePaidDep, createdAt: { gte: startOfMonthUTC } },
+        }),
+      ]);
+
+      const overDaily =
+        offer.capDaily != null && paidToday >= Number(offer.capDaily);
+      const overMonthly =
+        offer.capMonthly != null && paidMonth >= Number(offer.capMonthly);
+
+      payout = overDaily || overMonthly ? 0 : cpa;
+    } else {
+      payout = 0;
     }
-    return await handle(req, raw, data);
-  } catch (e) {
-    console.error("POST /postbacks/ingest error", e);
-    return NextResponse.json({ ok: false, error: "internal" }, { status: 500 });
-  }
-}
 
-// Для отладки: поддержим GET c query
-export async function GET(req: NextRequest) {
-  try {
-    const u = new URL(req.url);
-    const p = u.searchParams;
-    const body = {
-      secret: p.get("secret"),
-      offer_id: p.get("offer_id"),
-      tx_id: p.get("tx_id"),
-      event: p.get("event"),
-      amount: p.get("amount"),
-      currency: p.get("currency"),
-      click_id: p.get("click_id") ?? p.get("clickId"),
-      sub_id: p.get("sub_id") ?? p.get("subId"),
-    };
-    const raw = JSON.stringify(body);
-    return await handle(req, raw, body);
-  } catch (e) {
-    console.error("GET /postbacks/ingest error", e);
-    return NextResponse.json({ ok: false, error: "internal" }, { status: 500 });
+    // --- создаём конверсию ---
+    const conv = await prisma.conversion.create({
+      data: {
+        userId: click.userId ?? undefined,
+        offerId: offer.id,
+        subId: click.subId ?? undefined,
+        type: event,
+        amount: payout > 0 ? payout : 0,
+        currency,
+        txId,
+      },
+      select: { id: true, type: true, amount: true, currency: true, subId: true },
+    });
+
+    return ok({ id: conv.id, type: conv.type, amount: conv.amount });
+  } catch (e: any) {
+    return bad(e?.message || "INGEST_FAILED", 500);
   }
 }
