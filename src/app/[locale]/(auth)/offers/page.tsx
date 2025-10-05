@@ -8,6 +8,7 @@ type OfferRow = {
   id: string;
   title: string;
   cpa: number | null;
+  cap: number | null;
   geo: string;
   vertical: string;
   kpi1: number | null;
@@ -15,7 +16,7 @@ type OfferRow = {
   mode: "Auto" | "Manual";
   requested: boolean;
   approved: boolean;
-  cap?: number | null; // NEW (если API отдаёт — покажем)
+  
 };
 
 export default function OffersPage() {
