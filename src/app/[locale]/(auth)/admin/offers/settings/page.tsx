@@ -9,8 +9,7 @@ type Row = {
   id: string;
   title: string;
   cpa: number | null;
-  capDaily?: number | null;
-  capMonthly?: number | null;
+  cap?: number | null; // ← ЕДИНАЯ КЭПА
 };
 
 export default function OfferSettingsPage() {
@@ -25,7 +24,6 @@ export default function OfferSettingsPage() {
     setLoading(true);
     setMsg(null);
     try {
-      // используем уже существующий список админа
       const r = await fetch("/api/admin/offers/list", { cache: "no-store" });
       const j = await r.json();
       setRows(Array.isArray(j?.items) ? j.items : []);
@@ -66,8 +64,7 @@ export default function OfferSettingsPage() {
         body: JSON.stringify({
           offerId: row.id,
           cpa: row.cpa,
-          capDaily: row.capDaily,
-          capMonthly: row.capMonthly,
+          cap: row.cap, // ← отправляем единую капу
         }),
       });
       const j = await r.json();
@@ -94,21 +91,20 @@ export default function OfferSettingsPage() {
         <table className="min-w-full text-sm">
           <thead className="text-white/70">
             <tr>
-              <Th>Title</Th><Th>CPA</Th><Th>Daily Cap</Th><Th>Monthly Cap</Th><Th>Save</Th>
+              <Th>Title</Th><Th>CPA</Th><Th>Cap</Th><Th>Save</Th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="p-6 text-white/60">Загрузка…</td></tr>
+              <tr><td colSpan={4} className="p-6 text-white/60">Загрузка…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={5} className="p-6 text-white/60">Пусто</td></tr>
+              <tr><td colSpan={4} className="p-6 text-white/60">Пусто</td></tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id} className="border-t border-white/10">
                   <Td>{r.title}</Td>
                   <Td><Inp value={r.cpa ?? 0} onChange={(v)=>edit(r.id,"cpa",v)} /></Td>
-                  <Td><Inp value={r.capDaily ?? 0} onChange={(v)=>edit(r.id,"capDaily",v)} /></Td>
-                  <Td><Inp value={r.capMonthly ?? 0} onChange={(v)=>edit(r.id,"capMonthly",v)} /></Td>
+                  <Td><Inp value={r.cap ?? 0} onChange={(v)=>edit(r.id,"cap",v)} /></Td>
                   <Td>
                     <button
                       className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 hover:bg-white/15"
@@ -131,13 +127,14 @@ export default function OfferSettingsPage() {
 
 function Th({children}:{children:React.ReactNode}){return <th className="px-4 py-3 font-semibold">{children}</th>}
 function Td({children}:{children:React.ReactNode}){return <td className="px-4 py-3">{children}</td>}
-function Inp({value,onChange}:{value:number;onChange:(v:string)=>void}) {
+function Inp({value,onChange}:{value:number|null;onChange:(v:string)=>void}) {
   return (
     <input
       type="number"
       step="1"
       className="w-28 rounded-lg border border-white/15 bg-zinc-900 px-2 py-1 text-white outline-none"
-      value={String(value ?? "")}
+      value={value == null ? "" : String(value)}
+      placeholder="пусто = без лимита"
       onChange={(e)=>onChange(e.target.value)}
     />
   );
