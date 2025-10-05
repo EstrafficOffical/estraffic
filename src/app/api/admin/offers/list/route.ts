@@ -12,8 +12,20 @@ export async function GET() {
   const items = await prisma.offer.findMany({
     orderBy: { createdAt: "desc" },
     select: {
-      id: true, title: true, geo: true, vertical: true, cpa: true,
-      mode: true, status: true, hidden: true, createdAt: true, updatedAt: true
+      id: true,
+      title: true,
+      geo: true,
+      vertical: true,
+      cpa: true,
+      mode: true,
+      status: true,
+      hidden: true,
+      createdAt: true,
+      updatedAt: true,
+      // новые/нужные поля
+      cap: true,
+      minDeposit: true,
+      holdDays: true,
     } as any,
   });
 

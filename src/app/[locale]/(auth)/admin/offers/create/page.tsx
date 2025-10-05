@@ -26,6 +26,7 @@ export default function CreateOfferPage() {
     kpi2: "",
     mode: "Manual" as Mode,
     targetUrl: "",
+    cap: "", // NEW
   });
 
   async function submit(e: React.FormEvent) {
@@ -43,6 +44,7 @@ export default function CreateOfferPage() {
         kpi2: form.kpi2 ? Number(form.kpi2) : null,
         mode: form.mode,
         targetUrl: form.targetUrl.trim() || null,
+        cap: form.cap ? Number(form.cap) : null, // NEW
       };
 
       const res = await fetch("/api/admin/offers", {
@@ -130,6 +132,19 @@ export default function CreateOfferPage() {
               placeholder="например 50"
             />
           </Field>
+
+          <Field label="Cap (кол-во оплаченных DEP)">
+            <input
+              type="number"
+              min={0}
+              step="1"
+              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
+              value={form.cap}
+              onChange={(e) => setForm((s) => ({ ...s, cap: e.target.value }))}
+              placeholder="например 20"
+            />
+          </Field>
+
           <Field label="KPI1">
             <input
               type="number"

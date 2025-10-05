@@ -12,8 +12,7 @@ type AdminOfferRow = {
   cpa: number | null;
   mode: "Auto" | "Manual";
   hidden: boolean;
-  capDaily?: number | null;
-  capMonthly?: number | null;
+  cap?: number | null;           // NEW
   minDeposit?: number | null;
   holdDays?: number | null;
   createdAt?: string;
@@ -37,7 +36,6 @@ export default function AdminOffersListPage() {
       const r = await fetch("/api/admin/offers/list", { cache: "no-store" });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.error || "Failed");
-      // ожидаем поля капов/миндепа/холда; если API их не отдаёт — UI покажет "—"
       setRows(Array.isArray(j?.items) ? j.items : []);
     } catch (e: any) {
       setMsg(e?.message || "Ошибка загрузки");
@@ -127,9 +125,8 @@ export default function AdminOffersListPage() {
               <Th>GEO</Th>
               <Th>Vertical</Th>
               <Th>CPA</Th>
+              <Th>Cap</Th>
               <Th>Mode</Th>
-              <Th>Cap D</Th>
-              <Th>Cap M</Th>
               <Th>MinDep</Th>
               <Th>Hold</Th>
               <Th>Hidden</Th>
@@ -138,9 +135,9 @@ export default function AdminOffersListPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={11} className="p-6 text-white/60">Загрузка…</td></tr>
+              <tr><td colSpan={10} className="p-6 text-white/60">Загрузка…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={11} className="p-6 text-white/60">Пусто</td></tr>
+              <tr><td colSpan={10} className="p-6 text-white/60">Пусто</td></tr>
             ) : (
               filtered.map((r) => (
                 <tr key={r.id} className="border-t border-white/10">
@@ -148,9 +145,8 @@ export default function AdminOffersListPage() {
                   <Td>{r.geo}</Td>
                   <Td>{r.vertical}</Td>
                   <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
+                  <Td>{r.cap ?? "—"}</Td>
                   <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
-                  <Td>{r.capDaily ?? "—"}</Td>
-                  <Td>{r.capMonthly ?? "—"}</Td>
                   <Td>{fmtMoney(r.minDeposit)}</Td>
                   <Td>{r.holdDays ?? "—"}</Td>
                   <Td>{r.hidden ? <Badge tone="orange">Yes</Badge> : <Badge tone="green">No</Badge>}</Td>

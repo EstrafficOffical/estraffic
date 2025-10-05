@@ -15,6 +15,7 @@ type OfferRow = {
   mode: "Auto" | "Manual";
   requested: boolean;
   approved: boolean;
+  cap?: number | null; // NEW (если API отдаёт — покажем)
 };
 
 export default function OffersPage() {
@@ -35,15 +36,11 @@ export default function OffersPage() {
         const data = await res.json();
         if (!alive) return;
         setRows(Array.isArray(data) ? data : data.items ?? []);
-      } catch {
-        if (alive) setRows([]);
       } finally {
         if (alive) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   const filtered = useMemo(() => {
@@ -103,6 +100,7 @@ export default function OffersPage() {
             <tr className="text-left">
               <Th>Offer</Th>
               <Th>CPA</Th>
+              <Th>Cap</Th>
               <Th>GEO</Th>
               <Th>Vertical</Th>
               <Th>KPI</Th>
@@ -113,14 +111,15 @@ export default function OffersPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="p-6 text-white/60">Loading…</td></tr>
+              <tr><td colSpan={9} className="p-6 text-white/60">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="p-6 text-white/60">No offers</td></tr>
+              <tr><td colSpan={9} className="p-6 text-white/60">No offers</td></tr>
             ) : (
               filtered.map((r) => (
                 <tr key={r.id} className="border-t border-white/10">
                   <Td className="font-medium">{r.title}</Td>
                   <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
+                  <Td>{r.cap ?? "—"}</Td>
                   <Td>{r.geo}</Td>
                   <Td>{r.vertical}</Td>
                   <Td>{r.kpi1 ?? "0.00"}</Td>

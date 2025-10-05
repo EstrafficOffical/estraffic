@@ -13,19 +13,32 @@ export async function POST(req: Request) {
     return bad("UNAUTHORIZED", 401);
   }
 
-  const body = await req.json().catch(() => ({}));
-  const { offerId, cpa, capDaily, capMonthly } = body || {};
+  const body = await req.json().catch(() => ({} as any));
+  const { offerId, cpa, cap } = body || {};
   if (!offerId) return bad("MISSING offerId");
 
   const data: any = {};
-  if (cpa != null) data.cpa = Number(cpa);
-  if (capDaily != null) data.capDaily = parseInt(String(capDaily));
-  if (capMonthly != null) data.capMonthly = parseInt(String(capMonthly));
+
+  if (cpa !== undefined && cpa !== null && cpa !== "") {
+    const n = Number(cpa);
+    if (!Number.isFinite(n)) return bad("INVALID cpa");
+    data.cpa = n;
+  }
+
+  if (cap !== undefined) {
+    if (cap === null || cap === "") {
+      data.cap = null;
+    } else {
+      const n = parseInt(String(cap), 10);
+      if (!Number.isFinite(n) || n < 0) return bad("INVALID cap");
+      data.cap = n;
+    }
+  }
 
   const upd = await prisma.offer.update({
     where: { id: offerId },
     data,
-    select: { id: true, title: true, cpa: true, capDaily: true, capMonthly: true },
+    select: { id: true, title: true, cpa: true, cap: true },
   });
 
   return NextResponse.json({ ok: true, offer: upd });

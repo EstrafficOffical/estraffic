@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 const SERVER_SECRET =
   process.env.POSTBACK_SHARED_SECRET || process.env.SERVER_SECRET;
 
-/** Удобные ответы */
 function ok(data: any) {
   return NextResponse.json({ ok: true, ...data });
 }
@@ -16,23 +15,23 @@ function bad(msg: string, code = 400) {
 /**
  * Ингест постбеков.
  * Правила:
- * - авторизация простым секретом (?secret=...);
+ * - авторизация ?secret=...;
  * - выплата идёт ТОЛЬКО на event=DEP;
- * - капы: capDaily / capMonthly (оплаченные DEP за сегодня/месяц);
+ * - ЕДИНАЯ капа: Offer.cap — глобальный лимит оплаченных DEP (lifetime);
  * - дубли по (offerId, txId) игнорируем (возвращаем существующую запись);
- * - amount = 0 если кап переполнен (но конверсию записываем).
+ * - если капа исчерпана — записываем конверсию с amount=0.
  */
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
-    // --- авторизация ---
+    // auth
     const secret = url.searchParams.get("secret");
     if (!SERVER_SECRET || secret !== SERVER_SECRET) {
       return bad("UNAUTHORIZED", 401);
     }
 
-    // --- входные поля (поддержка snake и camel) ---
+    // input (camel + snake)
     const clickId =
       url.searchParams.get("clickId") ||
       url.searchParams.get("click_id") ||
@@ -50,69 +49,41 @@ export async function GET(req: Request) {
     if (!clickId || !offerId) return bad("MISSING click_id or offer_id");
     if (!txId) return bad("MISSING tx_id");
 
-    // --- найдём клик (привязка user/subId) ---
+    // find click (user/subId)
     const click = await prisma.click.findFirst({
       where: { clickId, offerId },
       select: { userId: true, subId: true, offerId: true },
     });
     if (!click) return bad("CLICK_NOT_FOUND", 404);
 
-    // --- оффер ---
+    // offer
     const offer = await prisma.offer.findFirst({
       where: { id: offerId, hidden: false, status: "ACTIVE" },
-      select: { id: true, cpa: true, capDaily: true, capMonthly: true },
+      select: { id: true, cpa: true, cap: true },
     });
     if (!offer) return bad("OFFER_NOT_AVAILABLE", 404);
 
-    // --- идемпотентность по (offerId, txId) ---
+    // idempotency
     const existing = await prisma.conversion.findFirst({
       where: { offerId: offer.id, txId },
       select: { id: true },
     });
     if (existing) return ok({ id: existing.id, dedup: true });
 
-    // --- расчёт выплаты ---
+    // payout
     let payout = 0;
-
     if (event === "DEP") {
       const cpa = Number(offer.cpa ?? 0);
 
-      // границы UTC (правильно для сравнения в БД)
-      const now = new Date();
-      const startOfDayUTC = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-      );
-      const startOfMonthUTC = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
-      );
+      // сколько уже ОПЛАЧЕННЫХ DEP всего (lifetime)
+      const paidTotal = await prisma.conversion.count({
+        where: { offerId: offer.id, type: "DEP", amount: { gt: 0 as any } },
+      });
 
-      // сколько уже ОПЛАЧЕННЫХ DEP (amount > 0)
-      const wherePaidDep = {
-        offerId: offer.id,
-        type: "DEP" as const,
-        amount: { gt: 0 as any },
-      };
-
-      const [paidToday, paidMonth] = await Promise.all([
-        prisma.conversion.count({
-          where: { ...wherePaidDep, createdAt: { gte: startOfDayUTC } },
-        }),
-        prisma.conversion.count({
-          where: { ...wherePaidDep, createdAt: { gte: startOfMonthUTC } },
-        }),
-      ]);
-
-      const overDaily =
-        offer.capDaily != null && paidToday >= Number(offer.capDaily);
-      const overMonthly =
-        offer.capMonthly != null && paidMonth >= Number(offer.capMonthly);
-
-      payout = overDaily || overMonthly ? 0 : cpa;
-    } else {
-      payout = 0;
+      const overCap = offer.cap != null && paidTotal >= Number(offer.cap);
+      payout = overCap ? 0 : cpa;
     }
 
-    // --- создаём конверсию ---
     const conv = await prisma.conversion.create({
       data: {
         userId: click.userId ?? undefined,
@@ -123,7 +94,7 @@ export async function GET(req: Request) {
         currency,
         txId,
       },
-      select: { id: true, type: true, amount: true, currency: true, subId: true },
+      select: { id: true, type: true, amount: true },
     });
 
     return ok({ id: conv.id, type: conv.type, amount: conv.amount });

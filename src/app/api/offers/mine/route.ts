@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import  {auth}  from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -22,6 +22,11 @@ export async function GET() {
     cpa: r.offer.cpa != null ? Number(r.offer.cpa) : null,
     mode: r.offer.mode,
     targetUrl: r.offer.targetUrl,
+    // для UI
+    cap: r.offer.cap ?? null,
+    minDeposit: r.offer.minDeposit != null ? Number(r.offer.minDeposit) : null,
+    holdDays: r.offer.holdDays ?? null,
+    rules: r.offer.rules ?? null,
   }));
 
   return NextResponse.json({ items });

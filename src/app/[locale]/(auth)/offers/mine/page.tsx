@@ -11,8 +11,7 @@ type MyOffer = {
   geo: string;
   vertical: string;
   mode: "Auto" | "Manual";
-  capDaily?: number | null;
-  capMonthly?: number | null;
+  cap?: number | null;            // NEW
   minDeposit?: number | null;
   holdDays?: number | null;
   rules?: string | null;
@@ -29,11 +28,9 @@ export default function MyOffersPage() {
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  // для персонального линка
   const [userId, setUserId] = useState<string | null>(null);
   const [userLoading, setUserLoading] = useState(true);
 
-  // поля для ссылки
   const [subId, setSubId] = useState("");
   const [link, setLink] = useState<string | null>(null);
 
@@ -52,7 +49,6 @@ export default function MyOffersPage() {
     return () => { alive = false; };
   }, []);
 
-  // тянем сессию, чтобы знать userId и вшивать его в линк
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -98,7 +94,6 @@ export default function MyOffersPage() {
         ? window.location.origin
         : process.env.NEXT_PUBLIC_SITE_URL || "";
 
-    // основной чистый путь /r; если вдруг он выключен, поменяй на /api/r
     const u = new URL(`/r/${offerId}`, base);
     if (subId) u.searchParams.set("subid", subId);
     if (userId) u.searchParams.set("user", userId);
@@ -148,6 +143,7 @@ export default function MyOffersPage() {
             <tr className="text-left">
               <Th>Offer</Th>
               <Th>CPA</Th>
+              <Th>Cap</Th>
               <Th>GEO</Th>
               <Th>Vertical</Th>
               <Th>Mode</Th>
@@ -156,28 +152,123 @@ export default function MyOffersPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="p-6 text-white/60">Loading…</td></tr>
+              <tr><td colSpan={7} className="p-6 text-white/60">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="p-6 text-white/60">No approved offers yet</td></tr>
+              <tr><td colSpan={7} className="p-6 text-white/60">No approved offers yet</td></tr>
             ) : (
               filtered.map((r) => {
                 const isOpen = expanded === r.id;
                 return (
-                  <FragmentRow
-                    key={r.id}
-                    row={r}
-                    isOpen={isOpen}
-                    onToggle={() => setExpanded(isOpen ? null : r.id)}
-                    onComplete={() => complete(r.id)}
-                    subId={subId}
-                    setSubId={setSubId}
-                    link={link}
-                    onBuildLink={() => buildLink(r.id)}
-                    onCopyLink={copyLink}
-                    canBuild={!userLoading && !!userId}
-                    userReadyMsg={userLoading ? "Loading user…" : userId ? "" : "No user id"}
-                    fmtMoney={fmtMoney}
-                  />
+                  <>
+                    <tr key={r.id} className="border-t border-white/10">
+                      <Td className="font-medium">
+                        <button
+                          onClick={() => setExpanded(isOpen ? null : r.id)}
+                          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 mr-2"
+                          title={isOpen ? "Hide details" : "Show details"}
+                        >
+                          {isOpen ? "−" : "+"}
+                        </button>
+                        {r.title}
+                      </Td>
+                      <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
+                      <Td>{r.cap ?? "—"}</Td>
+                      <Td>{r.geo}</Td>
+                      <Td>{r.vertical}</Td>
+                      <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
+                      <Td>
+                        <button
+                          onClick={() => complete(r.id)}
+                          className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 hover:bg-white/15"
+                          title="Скрыть из «Мои офферы»"
+                        >
+                          Завершить
+                        </button>
+                      </Td>
+                    </tr>
+
+                    {isOpen && (
+                      <tr className="bg-white/3">
+                        <td colSpan={7} className="px-4 py-3 border-t border-white/10">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {/* Block 1: GEO/Vertical + Cap/MinDep/Hold */}
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <div className="text-white/60 text-xs">GEO / Vertical</div>
+                              <div className="mt-1 font-medium">
+                                {r.geo} • {r.vertical}
+                              </div>
+                              {r.cap != null && (
+                                <div className="mt-3">
+                                  <div className="text-white/60 text-xs">Cap</div>
+                                  <div className="font-medium">{r.cap}</div>
+                                </div>
+                              )}
+                              {r.minDeposit != null && (
+                                <div className="mt-3">
+                                  <div className="text-white/60 text-xs">Min. Deposit</div>
+                                  <div className="font-medium">{fmtMoney(r.minDeposit)}</div>
+                                </div>
+                              )}
+                              {r.holdDays != null && (
+                                <div className="mt-3">
+                                  <div className="text-white/60 text-xs">Hold (days)</div>
+                                  <div className="font-medium">{r.holdDays}</div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Block 2: Target URL */}
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <div className="text-white/60 text-xs">Target URL</div>
+                              <div className="mt-1 truncate text-sm">{r.targetUrl ?? "—"}</div>
+                            </div>
+
+                            {/* Block 3: Tracking Link */}
+                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                              <div className="text-white/60 text-xs mb-1">Tracking Link</div>
+                              <div className="flex gap-2">
+                                <input
+                                  placeholder="subId (optional)"
+                                  value={subId}
+                                  onChange={(e) => setSubId(e.target.value)}
+                                  className="flex-1 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm outline-none"
+                                />
+                                <button
+                                  onClick={() => buildLink(r.id)}
+                                  disabled={!(!userLoading && !!userId)}
+                                  className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
+                                  title={userLoading ? "Loading user…" : userId ? "" : "No user id"}
+                                >
+                                  Build link
+                                </button>
+                                <button
+                                  onClick={copyLink}
+                                  disabled={!link}
+                                  className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
+                                  title="Copy"
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                              {link && (
+                                <div className="mt-2 break-all rounded-lg border border-white/10 bg-black/30 p-2 text-xs">
+                                  {link}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Block 4: Rules */}
+                            {r.rules && (
+                              <div className="md:col-span-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                                <div className="text-white/60 text-xs">Rules</div>
+                                <div className="mt-1 whitespace-pre-wrap text-sm leading-6">{r.rules}</div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })
             )}
@@ -187,136 +278,6 @@ export default function MyOffersPage() {
 
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} />
     </section>
-  );
-}
-
-function FragmentRow(props: {
-  row: MyOffer;
-  isOpen: boolean;
-  onToggle: () => void;
-  onComplete: () => void;
-  subId: string;
-  setSubId: (v: string) => void;
-  link: string | null;
-  onBuildLink: () => void;
-  onCopyLink: () => void;
-  canBuild: boolean;
-  userReadyMsg: string;
-  fmtMoney: (n?: number | null) => string;
-}) {
-  const r = props.row;
-  return (
-    <>
-      <tr className="border-t border-white/10">
-        <Td className="font-medium">
-          <button
-            onClick={props.onToggle}
-            className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 mr-2"
-            title={props.isOpen ? "Hide details" : "Show details"}
-          >
-            {props.isOpen ? "−" : "+"}
-          </button>
-          {r.title}
-        </Td>
-        <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
-        <Td>{r.geo}</Td>
-        <Td>{r.vertical}</Td>
-        <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
-        <Td>
-          <button
-            onClick={props.onComplete}
-            className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 hover:bg-white/15"
-            title="Скрыть из «Мои офферы»"
-          >
-            Завершить
-          </button>
-        </Td>
-      </tr>
-
-      {props.isOpen && (
-        <tr className="bg-white/3">
-          <td colSpan={6} className="px-4 py-3 border-t border-white/10">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Блок 1: GEO/Vertical + Cap */}
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <div className="text-white/60 text-xs">GEO / Vertical</div>
-                <div className="mt-1 font-medium">
-                  {r.geo} • {r.vertical}
-                </div>
-                {(r.capDaily != null || r.capMonthly != null) && (
-                  <div className="mt-3">
-                    <div className="text-white/60 text-xs">Caps</div>
-                    <div className="font-medium">
-                      Daily: {r.capDaily ?? "—"}{r.capMonthly != null ? ` • Monthly: ${r.capMonthly}` : ""}
-                    </div>
-                  </div>
-                )}
-                {r.minDeposit != null && (
-                  <div className="mt-3">
-                    <div className="text-white/60 text-xs">Min. Deposit</div>
-                    <div className="font-medium">{props.fmtMoney(r.minDeposit)}</div>
-                  </div>
-                )}
-                {r.holdDays != null && (
-                  <div className="mt-3">
-                    <div className="text-white/60 text-xs">Hold (days)</div>
-                    <div className="font-medium">{r.holdDays}</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Блок 2: Target URL */}
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <div className="text-white/60 text-xs">Target URL</div>
-                <div className="mt-1 truncate text-sm">{r.targetUrl ?? "—"}</div>
-              </div>
-
-              {/* Блок 3: Tracking Link */}
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                <div className="text-white/60 text-xs mb-1">Tracking Link</div>
-                <div className="flex gap-2">
-                  <input
-                    placeholder="subId (optional)"
-                    value={props.subId}
-                    onChange={(e) => props.setSubId(e.target.value)}
-                    className="flex-1 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm outline-none"
-                  />
-                  <button
-                    onClick={props.onBuildLink}
-                    disabled={!props.canBuild}
-                    className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
-                    title={props.userReadyMsg}
-                  >
-                    Build link
-                  </button>
-                  <button
-                    onClick={props.onCopyLink}
-                    disabled={!props.link}
-                    className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
-                    title="Copy"
-                  >
-                    Copy
-                  </button>
-                </div>
-                {props.link && (
-                  <div className="mt-2 break-all rounded-lg border border-white/10 bg-black/30 p-2 text-xs">
-                    {props.link}
-                  </div>
-                )}
-              </div>
-
-              {/* Блок 4: Rules (во всю ширину на мобильном) */}
-              {r.rules && (
-                <div className="md:col-span-3 rounded-xl border border-white/10 bg-black/20 p-3">
-                  <div className="text-white/60 text-xs">Rules</div>
-                  <div className="mt-1 whitespace-pre-wrap text-sm leading-6">{r.rules}</div>
-                </div>
-              )}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
   );
 }
 
