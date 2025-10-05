@@ -4,8 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const session = await auth();
-  const role = (session?.user as any)?.role;
-  if (!session?.user || role !== "ADMIN") {
+  if (!session?.user || (session.user as any).role !== "ADMIN") {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
 
@@ -17,15 +16,14 @@ export async function GET() {
       geo: true,
       vertical: true,
       cpa: true,
+      cap: true,
       mode: true,
       status: true,
       hidden: true,
-      createdAt: true,
-      updatedAt: true,
-      // новые/нужные поля
-      cap: true,
       minDeposit: true,
       holdDays: true,
+      createdAt: true,
+      updatedAt: true,
     } as any,
   });
 

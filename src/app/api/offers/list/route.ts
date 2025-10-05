@@ -1,47 +1,45 @@
 import { NextResponse } from "next/server";
-import  {auth}  from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = (session.user as { id: string }).id;
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const userId = (session.user as any).id as string;
 
-  const [offers, accesses, requests] = await Promise.all([
-    prisma.offer.findMany({
-      select: {
-        id: true,
-        title: true,
-        tag: true,
-        geo: true,
-        vertical: true,
-        cpa: true,
-        mode: true,
-        targetUrl: true,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.offerAccess.findMany({ where: { userId }, select: { offerId: true, approved: true } }),
-    prisma.offerRequest.findMany({ where: { userId }, select: { offerId: true, status: true, id: true } }),
-  ] as const);
-
-  const accessSet = new Set(accesses.filter((a) => a.approved).map((a) => a.offerId));
-  const reqMap = new Map(requests.map((r) => [r.offerId, r] as const));
-
-  const items = offers.map((o) => {
-    let status: "APPROVED" | "REQUESTED" | "REJECTED" | "NONE" = "NONE";
-    if (accessSet.has(o.id)) status = "APPROVED";
-    else if (reqMap.has(o.id)) {
-      const st = reqMap.get(o.id)!.status;
-      status = st === "APPROVED" ? "APPROVED" : st === "REJECTED" ? "REJECTED" : "REQUESTED";
-    }
-    return {
-      ...o,
-      cpa: o.cpa != null ? Number(o.cpa) : null,
-      status,
-      requestId: reqMap.get(o.id)?.id ?? null,
-    };
+  const offers = await prisma.offer.findMany({
+    where: { hidden: false, status: "ACTIVE" },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      title: true,
+      geo: true,
+      vertical: true,
+      cpa: true,
+      cap: true,
+      kpi1: true,
+      kpi2: true,
+      mode: true,
+      accesses: { where: { userId }, select: { approved: true }, take: 1 },
+      requests: { where: { userId }, select: { status: true }, take: 1 },
+    },
   });
 
-  return NextResponse.json({ items });
+  return NextResponse.json({
+    items: offers.map((o) => ({
+      id: o.id,
+      title: o.title,
+      geo: o.geo,
+      vertical: o.vertical,
+      cpa: o.cpa != null ? Number(o.cpa) : null,
+      cap: o.cap != null ? Number(o.cap) : null,
+      kpi1: o.kpi1 ?? 0,
+      kpi2: o.kpi2 ?? 0,
+      mode: o.mode,
+      approved: !!o.accesses[0]?.approved,
+      requested: !!o.requests[0],
+    })),
+  });
 }
