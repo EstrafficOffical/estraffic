@@ -116,6 +116,7 @@ export default async function Page({
             <tr>
               <th className="text-left px-3 py-2">Дата</th>
               <th className="text-left px-3 py-2">Email</th>
+              <th className="text-left px-3 py-2">ID</th>
               <th className="text-left px-3 py-2">Имя/Telegram</th>
               <th className="text-left px-3 py-2">Роль</th>
               <th className="text-left px-3 py-2">Статус</th>
@@ -127,6 +128,7 @@ export default async function Page({
               <tr key={u.id} className="border-t border-white/10">
                 <td className="px-3 py-2">{new Date(u.createdAt).toLocaleString()}</td>
                 <td className="px-3 py-2">{u.email}</td>
+                <td className="px-3 py-2 font-mono text-xs text-white/70 break-all">{u.id}</td>
                 <td className="px-3 py-2">
                   <div className="text-white/90">{u.name ?? "—"}</div>
                   <div className="text-white/50">{u.telegram ?? "—"}</div>
