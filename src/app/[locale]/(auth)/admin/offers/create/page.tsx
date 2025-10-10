@@ -22,11 +22,11 @@ export default function CreateOfferPage() {
     geo: "",
     vertical: "",
     cpa: "",
-    kpi1: "",
-    kpi2: "",
+    kpi1Text: "",   // ← текст вместо числа
+    kpi2Text: "",
     mode: "Manual" as Mode,
     targetUrl: "",
-    cap: "", // NEW
+    cap: "",
   });
 
   async function submit(e: React.FormEvent) {
@@ -40,11 +40,11 @@ export default function CreateOfferPage() {
         geo: form.geo.trim(),
         vertical: form.vertical.trim(),
         cpa: form.cpa ? Number(form.cpa) : null,
-        kpi1: form.kpi1 ? Number(form.kpi1) : null,
-        kpi2: form.kpi2 ? Number(form.kpi2) : null,
+        kpi1Text: form.kpi1Text.trim() || null,
+        kpi2Text: form.kpi2Text.trim() || null,
         mode: form.mode,
         targetUrl: form.targetUrl.trim() || null,
-        cap: form.cap ? Number(form.cap) : null, // NEW
+        cap: form.cap ? Number(form.cap) : null,
       };
 
       const res = await fetch("/api/admin/offers", {
@@ -54,7 +54,7 @@ export default function CreateOfferPage() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Failed to create offer");
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to create offer");
 
       setMsg("Оффер создан");
       setTimeout(() => router.push(`/${locale}/admin/offers`), 800);
@@ -145,22 +145,20 @@ export default function CreateOfferPage() {
             />
           </Field>
 
-          <Field label="KPI1">
+          <Field label="KPI1 (текст)">
             <input
-              type="number"
-              step="0.01"
               className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.kpi1}
-              onChange={(e) => setForm((s) => ({ ...s, kpi1: e.target.value }))}
+              value={form.kpi1Text}
+              onChange={(e) => setForm((s) => ({ ...s, kpi1Text: e.target.value }))}
+              placeholder="напр. Min dep $20"
             />
           </Field>
-          <Field label="KPI2">
+          <Field label="KPI2 (текст)">
             <input
-              type="number"
-              step="0.01"
               className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              value={form.kpi2}
-              onChange={(e) => setForm((s) => ({ ...s, kpi2: e.target.value }))}
+              value={form.kpi2Text}
+              onChange={(e) => setForm((s) => ({ ...s, kpi2Text: e.target.value }))}
+              placeholder="напр. CR > 10%"
             />
           </Field>
 

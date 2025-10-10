@@ -11,8 +11,11 @@ type OfferRow = {
   cap: number | null;
   geo: string;
   vertical: string;
-  kpi1: number | null;
-  kpi2: number | null;
+  // KPI: теперь поддерживаем текст
+  kpi1Text?: string | null;
+  kpi2Text?: string | null;
+  kpi1?: number | null;
+  kpi2?: number | null;
   mode: "Auto" | "Manual";
   requested: boolean;
   approved: boolean;
@@ -65,6 +68,9 @@ export default function OffersPage() {
     }
   }
 
+  const showKpi = (text?: string | null, num?: number | null) =>
+    (text && text.trim()) || (num != null ? String(num) : "—");
+
   return (
     <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-6 text-white/90">
       <div className="flex items-center gap-2">
@@ -94,7 +100,6 @@ export default function OffersPage() {
         </div>
       </div>
 
-      {/* mobile-friendly: горизонтальный скролл + минимальная ширина таблицы */}
       <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
         <table className="min-w-[720px] text-sm">
           <thead className="text-white/70">
@@ -123,8 +128,8 @@ export default function OffersPage() {
                   <Td>{r.cap ?? "—"}</Td>
                   <Td>{r.geo}</Td>
                   <Td>{r.vertical}</Td>
-                  <Td>{r.kpi1 ?? "0.00"}</Td>
-                  <Td>{r.kpi2 ?? "0.00"}</Td>
+                  <Td>{showKpi(r.kpi1Text, r.kpi1)}</Td>
+                  <Td>{showKpi(r.kpi2Text, r.kpi2)}</Td>
                   <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
                   <Td>
                     {r.approved ? (

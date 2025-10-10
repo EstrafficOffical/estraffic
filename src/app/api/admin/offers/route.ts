@@ -3,59 +3,47 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-type Body = {
-  title: string;
-  tag?: string | null;
-  geo: string;
-  vertical: string;
-  cpa?: number | null;
-  kpi1?: number | null;
-  kpi2?: number | null;
-  mode: "Auto" | "Manual";
-  targetUrl?: string | null;
-};
-
 export async function POST(req: Request) {
-  try {
-    const session = await auth();
-    const role = (session?.user as any)?.role;
-    if (!session?.user || role !== "ADMIN") {
-      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    }
-
-    const body = (await req.json()) as Body;
-
-    if (!body?.title?.trim()) return NextResponse.json({ error: "TITLE_REQUIRED" }, { status: 400 });
-    if (!body?.geo?.trim()) return NextResponse.json({ error: "GEO_REQUIRED" }, { status: 400 });
-    if (!body?.vertical?.trim()) return NextResponse.json({ error: "VERTICAL_REQUIRED" }, { status: 400 });
-    if (body.mode !== "Auto" && body.mode !== "Manual") {
-      return NextResponse.json({ error: "MODE_INVALID" }, { status: 400 });
-    }
-
-    const data: any = {
-      title: body.title.trim(),
-      tag: body.tag?.trim() || null,
-      geo: body.geo.trim(),
-      vertical: body.vertical.trim(),
-      cpa: body.cpa ?? null,
-      kpi1: body.kpi1 ?? null,
-      kpi2: body.kpi2 ?? null,
-      mode: body.mode,
-      status: "ACTIVE",
-      targetUrl: body.targetUrl?.trim() || null,
-      hidden: false,
-    };
-
-    try {
-      data.trackingTemplate = data.targetUrl
-        ? `${data.targetUrl}${data.targetUrl.includes("?") ? "&" : "?"}offer={offerId}&sub_id={subId}&user={userId}`
-        : null;
-    } catch {}
-
-    const created = await prisma.offer.create({ data });
-    return NextResponse.json({ ok: true, id: created.id });
-  } catch (err: any) {
-    console.error("Create offer error:", err);
-    return NextResponse.json({ error: err?.message || "INTERNAL_ERROR" }, { status: 500 });
+  const session = await auth();
+  if (!session?.user || (session.user as any).role !== "ADMIN") {
+    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
+
+  const body = await req.json().catch(() => ({} as any));
+  const {
+    title, tag, geo, vertical,
+    cpa, mode, targetUrl, cap,
+    kpi1Text, kpi2Text, // текстовые KPI
+  } = body || {};
+
+  if (!title || !geo || !vertical || !mode) {
+    return NextResponse.json({ error: "MISSING_FIELDS" }, { status: 400 });
+  }
+
+  const data: any = {
+    title: String(title),
+    tag: tag ?? null,
+    geo: String(geo),
+    vertical: String(vertical),
+    mode,
+    targetUrl: targetUrl ?? null,
+  };
+
+  if (cpa !== undefined && cpa !== null && cpa !== "") {
+    const n = Number(cpa);
+    if (!Number.isFinite(n)) return NextResponse.json({ error: "INVALID_CPA" }, { status: 400 });
+    data.cpa = n;
+  }
+  if (cap !== undefined && cap !== null && cap !== "") {
+    const n = parseInt(String(cap), 10);
+    if (!Number.isFinite(n) || n < 0) return NextResponse.json({ error: "INVALID_CAP" }, { status: 400 });
+    data.cap = n;
+  }
+
+  // текстовые KPI — сохраняем как есть
+  if (kpi1Text !== undefined) data.kpi1Text = kpi1Text || null;
+  if (kpi2Text !== undefined) data.kpi2Text = kpi2Text || null;
+
+  const created = await prisma.offer.create({ data, select: { id: true } });
+  return NextResponse.json({ ok: true, id: created.id });
 }

@@ -1,3 +1,45 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------- Глобальные улучшения (особенно для мобилок) ---------- */
+
+/* Не даём странице уезжать вбок, убираем горизонтальный скролл */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Медиа адаптивно сжимается по ширине контейнера */
+img, video, canvas, svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Убираем авто-зум на iOS при фокусе */
+input, select, textarea, button {
+  font-size: 16px;
+}
+
+/* Системные шрифты как фолбэк (tailwind уже задаёт, но оставим) */
+body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Утилиты, если удобнее классами (можно использовать в JSX) */
+.table-wrap { overflow-x: auto; }
+.break-any { overflow-wrap: anywhere; word-break: break-word; }
+
+/* Небольшое улучшение фокуса по умолчанию */
+:focus-visible {
+  outline: 2px solid rgba(255,255,255,0.35);
+  outline-offset: 2px;
+}
+
+/* Скрываем лишний контур у кликабельных иконок */
+button:focus {
+  outline: none;
+}
