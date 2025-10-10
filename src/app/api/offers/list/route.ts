@@ -15,11 +15,12 @@ export async function GET() {
     select: {
       id: true,
       title: true,
+      tag: true,                // ← добавили тег
       geo: true,
       vertical: true,
       cpa: true,
       cap: true,
-      // KPI: и числовые, и текстовые — для обратной совместимости
+      // KPI: поддерживаем и текстовые, и числовые (для обратной совместимости)
       kpi1: true,
       kpi2: true,
       kpi1Text: true,
@@ -34,11 +35,12 @@ export async function GET() {
     items: offers.map((o) => ({
       id: o.id,
       title: o.title,
+      tag: o.tag ?? null,       // ← прокидываем тег
       geo: o.geo,
       vertical: o.vertical,
       cpa: o.cpa != null ? Number(o.cpa) : null,
       cap: o.cap != null ? Number(o.cap) : null,
-      // В ответ кладём и текст, и число (если текстов нет)
+      // KPI: отдадим текст если есть, иначе число
       kpi1Text: o.kpi1Text ?? null,
       kpi2Text: o.kpi2Text ?? null,
       kpi1: o.kpi1 ?? null,

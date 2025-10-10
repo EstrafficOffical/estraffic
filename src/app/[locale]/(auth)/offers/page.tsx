@@ -7,12 +7,16 @@ import NavDrawer from "@/app/components/NavDrawer";
 type OfferRow = {
   id: string;
   title: string;
+  tag?: string | null;                 // ← NEW
   cpa: number | null;
   cap: number | null;
   geo: string;
   vertical: string;
-  kpi1: any; // может быть текстом
-  kpi2: any; // может быть текстом
+  // KPI могут приходить текстом или числом
+  kpi1?: number | string | null;
+  kpi2?: number | string | null;
+  kpi1Text?: string | null;
+  kpi2Text?: string | null;
   mode: "Auto" | "Manual";
   requested: boolean;
   approved: boolean;
@@ -40,14 +44,16 @@ export default function OffersPage() {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return rows;
     return rows.filter((r) =>
-      `${r.title} ${r.geo} ${r.vertical}`.toLowerCase().includes(s)
+      `${r.title} ${r.tag ?? ""} ${r.geo} ${r.vertical}`.toLowerCase().includes(s)
     );
   }, [rows, q]);
 
@@ -64,6 +70,15 @@ export default function OffersPage() {
       alert(data?.error ?? "Request error");
     }
   }
+
+  // удобный вывод KPI: текст если есть, иначе число, иначе "—"
+  const showKpi = (row: OfferRow, key: 1 | 2) => {
+    const t = key === 1 ? row.kpi1Text : row.kpi2Text;
+    const n = key === 1 ? row.kpi1 : row.kpi2;
+    if (t && String(t).trim() !== "") return t;
+    if (n != null && n !== "") return n;
+    return "—";
+  };
 
   return (
     <section className="w-full mx-auto px-4 py-8 space-y-6 text-white/90">
@@ -96,10 +111,11 @@ export default function OffersPage() {
 
       {/* full-width on desktop + safe on mobile */}
       <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
-        <table className="w-full min-w-[900px] text-sm">
+        <table className="w-full min-w-[980px] text-sm">
           <thead className="text-white/70">
             <tr className="text-left">
               <Th>Offer</Th>
+              <Th>Tag</Th>     {/* NEW */}
               <Th>CPA</Th>
               <Th>Cap</Th>
               <Th>GEO</Th>
@@ -112,19 +128,20 @@ export default function OffersPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="p-6 text-white/60">Loading…</td></tr>
+              <tr><td colSpan={10} className="p-6 text-white/60">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={9} className="p-6 text-white/60">No offers</td></tr>
+              <tr><td colSpan={10} className="p-6 text-white/60">No offers</td></tr>
             ) : (
               filtered.map((r) => (
                 <tr key={r.id} className="border-t border-white/10">
                   <Td className="font-medium">{r.title}</Td>
+                  <Td>{r.tag ?? "—"}</Td>
                   <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
                   <Td>{r.cap ?? "—"}</Td>
                   <Td>{r.geo}</Td>
                   <Td>{r.vertical}</Td>
-                  <Td>{r.kpi1 ?? "—"}</Td>
-                  <Td>{r.kpi2 ?? "—"}</Td>
+                  <Td>{showKpi(r, 1)}</Td>
+                  <Td>{showKpi(r, 2)}</Td>
                   <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
                   <Td>
                     {r.approved ? (

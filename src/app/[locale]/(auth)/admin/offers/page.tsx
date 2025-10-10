@@ -4,80 +4,73 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import NavDrawer from "@/app/components/NavDrawer";
 
-type AdminOfferRow = {
+type OfferRow = {
   id: string;
   title: string;
+  tag: string | null;
+  cpa: number | null;
+  cap: number | null;
   geo: string;
   vertical: string;
-  cpa: number | null;
+  kpi1: string | number | null;
+  kpi2: string | number | null;
   mode: "Auto" | "Manual";
-  hidden: boolean;
-  cap?: number | null;           // NEW
-  minDeposit?: number | null;
-  holdDays?: number | null;
-  createdAt?: string;
-  updatedAt?: string;
+  requested: boolean;
+  approved: boolean;
 };
 
-export default function AdminOffersListPage() {
+export default function OffersPage() {
   const pathname = usePathname();
   const locale = (pathname?.split("/")?.[1] || "ru") as string;
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [rows, setRows] = useState<AdminOfferRow[]>([]);
-  const [q, setQ] = useState("");
+  const [rows, setRows] = useState<OfferRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [q, setQ] = useState("");
 
-  async function load() {
-    setLoading(true);
-    setMsg(null);
-    try {
-      const r = await fetch("/api/admin/offers/list", { cache: "no-store" });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.error || "Failed");
-      setRows(Array.isArray(j?.items) ? j.items : []);
-    } catch (e: any) {
-      setMsg(e?.message || "Ошибка загрузки");
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetch("/api/offers/list", { cache: "no-store" });
+        const data = await res.json();
+        if (!alive) return;
+        setRows(Array.isArray(data) ? data : data.items ?? []);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return rows;
     return rows.filter((r) =>
-      `${r.title} ${r.geo} ${r.vertical}`.toLowerCase().includes(s)
+      `${r.title} ${r.tag ?? ""} ${r.geo} ${r.vertical}`.toLowerCase().includes(s)
     );
   }, [rows, q]);
 
-  async function setHidden(offerId: string, hidden: boolean) {
-    setMsg(null);
-    try {
-      const r = await fetch("/api/admin/offers/hide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerId, hidden }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.error || "Failed");
-      setRows((prev) =>
-        prev.map((it) => (it.id === offerId ? { ...it, hidden } : it))
-      );
-    } catch (e: any) {
-      setMsg(e?.message || "Не удалось изменить видимость");
+  async function requestOffer(offerId: string) {
+    const res = await fetch("/api/offers/requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ offerId }),
+    });
+    const data = await res.json();
+    if (res.ok && data?.ok) {
+      setRows((s) => s.map((r) => (r.id === offerId ? { ...r, requested: true } : r)));
+    } else {
+      alert(data?.error ?? "Request error");
     }
   }
 
-  const fmtMoney = (n?: number | null) =>
-    n == null ? "—" : `$${Number(n).toFixed(2)}`;
+  const showKpi = (v: string | number | null) =>
+    v == null || v === "" ? "—" : String(v);
 
   return (
-    <section className="relative mx-auto max-w-7xl px-4 py-8 space-y-6 text-white/90">
+    <section className="w-full mx-auto px-4 py-8 space-y-6 text-white/90">
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
@@ -88,75 +81,69 @@ export default function AdminOffersListPage() {
             <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
           </svg>
         </button>
-        <span className="font-semibold">Estrella</span>
+        <span className="font-semibold text-white">Estrella</span>
       </div>
 
-      <h1 className="text-3xl md:text-4xl font-extrabold">Офферы (админ)</h1>
+      <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Offers</h1>
 
       <div className="flex gap-3">
         <div className="relative flex-1">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Поиск по названию, GEO, вертикали…"
+            placeholder="Search offers"
             className="w-full rounded-xl px-10 py-3 outline-none bg-zinc-900 text-white placeholder:text-white/50 border border-white/15 backdrop-blur-xl focus:ring-2 focus:ring-white/20"
           />
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/60">🔎</span>
         </div>
-        <button
-          onClick={load}
-          className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 hover:bg:white/15"
-        >
-          Обновить
-        </button>
       </div>
 
-      {msg && (
-        <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm">
-          {msg}
-        </div>
-      )}
-
       <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
-        <table className="min-w-full text-sm">
+        <table className="w-full min-w-[1000px] text-sm">
           <thead className="text-white/70">
             <tr className="text-left">
               <Th>Offer</Th>
-              <Th>GEO</Th>
-              <Th>Vertical</Th>
+              <Th>Tag</Th>
               <Th>CPA</Th>
               <Th>Cap</Th>
+              <Th>GEO</Th>
+              <Th>Vertical</Th>
+              <Th>KPI</Th>
+              <Th>KPI</Th>
               <Th>Mode</Th>
-              <Th>MinDep</Th>
-              <Th>Hold</Th>
-              <Th>Hidden</Th>
               <Th>Action</Th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={10} className="p-6 text-white/60">Загрузка…</td></tr>
+              <tr><td colSpan={10} className="p-6 text-white/60">Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={10} className="p-6 text-white/60">Пусто</td></tr>
+              <tr><td colSpan={10} className="p-6 text-white/60">No offers</td></tr>
             ) : (
               filtered.map((r) => (
                 <tr key={r.id} className="border-t border-white/10">
                   <Td className="font-medium">{r.title}</Td>
-                  <Td>{r.geo}</Td>
-                  <Td>{r.vertical}</Td>
+                  <Td className="text-white/70">{r.tag ?? "—"}</Td>
                   <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
                   <Td>{r.cap ?? "—"}</Td>
+                  <Td>{r.geo}</Td>
+                  <Td>{r.vertical}</Td>
+                  <Td>{showKpi(r.kpi1)}</Td>
+                  <Td>{showKpi(r.kpi2)}</Td>
                   <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
-                  <Td>{fmtMoney(r.minDeposit)}</Td>
-                  <Td>{r.holdDays ?? "—"}</Td>
-                  <Td>{r.hidden ? <Badge tone="orange">Yes</Badge> : <Badge tone="green">No</Badge>}</Td>
                   <Td>
-                    <button
-                      onClick={() => setHidden(r.id, !r.hidden)}
-                      className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
-                    >
-                      {r.hidden ? "Показать" : "Скрыть"}
-                    </button>
+                    {r.approved ? (
+                      <Badge tone="green">Approved</Badge>
+                    ) : r.requested ? (
+                      <Badge tone="orange">Requested</Badge>
+                    ) : (
+                      <button
+                        onClick={() => requestOffer(r.id)}
+                        className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
+                      >
+                        Request
+                      </button>
+                    )}
                   </Td>
                 </tr>
               ))
@@ -165,7 +152,7 @@ export default function AdminOffersListPage() {
         </table>
       </div>
 
-      <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} isAdmin />
+      <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} />
     </section>
   );
 }
