@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import RowActions from "./row-actions";
-import ClientHeader from "./ClientHeader"; // ← клиентский хедер
+import ClientHeader from "./ClientHeader";
+import WalletsCell from "./WalletsCell";
 
 type SearchParams = {
   q?: string;
@@ -22,6 +23,13 @@ type UserRow = {
   role: string;
   status: string;
   createdAt: Date;
+  wallets?: {
+    id: string;
+    label: string | null;
+    address: string;
+    isPrimary: boolean;
+    verified: boolean;
+  }[];
 };
 
 export default async function Page({
@@ -71,12 +79,14 @@ export default async function Page({
         id: true,
         email: true,
         name: true,
-        // @ts-ignore
-        telegram: true,
+        telegram: true as any,
         role: true,
-        // @ts-ignore
-        status: true,
+        status: true as any,
         createdAt: true,
+        wallets: {
+          select: { id: true, label: true, address: true, isPrimary: true, verified: true },
+          orderBy: { isPrimary: "desc" },
+        },
       } as any,
     }),
   ]);
@@ -86,7 +96,6 @@ export default async function Page({
 
   return (
     <div className="p-4 space-y-4 text-white">
-      {/* Хедер с бургером и drawer */}
       <ClientHeader locale={locale} />
 
       <form className="flex flex-wrap gap-2">
@@ -110,13 +119,13 @@ export default async function Page({
         <button className="rounded-xl border border-white/20 px-3 py-2 hover:bg-white/10">Фильтр</button>
       </form>
 
-      {/* mobile-friendly: горизонтальный скролл + минимальная ширина таблицы */}
       <div className="rounded-xl border border-white/10 overflow-x-auto">
-        <table className="min-w-[880px] w-full text-sm">
+        <table className="min-w-[1100px] w-full text-sm">
           <thead className="bg-white/5">
             <tr>
               <th className="text-left px-3 py-2 whitespace-nowrap">Дата</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Email</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Кошельки</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">ID</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Имя/Telegram</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Роль</th>
@@ -126,9 +135,17 @@ export default async function Page({
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} className="border-t border-white/10">
-                <td className="px-3 py-2 whitespace-nowrap">{new Date(u.createdAt).toLocaleString()}</td>
+              <tr key={u.id} className="border-t border-white/10 align-top">
+                <td className="px-3 py-2 whitespace-nowrap">
+                  {new Date(u.createdAt).toLocaleString()}
+                </td>
                 <td className="px-3 py-2 whitespace-nowrap">{u.email}</td>
+
+                {/* Кошельки */}
+                <td className="px-3 py-2 align-top">
+                  <WalletsCell wallets={u.wallets ?? []} />
+                </td>
+
                 <td className="px-3 py-2 font-mono text-xs text-white/70 break-all">{u.id}</td>
                 <td className="px-3 py-2">
                   <div className="text-white/90">{u.name ?? "—"}</div>
@@ -143,7 +160,7 @@ export default async function Page({
             ))}
             {users.length === 0 && (
               <tr>
-                <td className="px-3 py-8 text-center text-white/60" colSpan={7}>
+                <td className="px-3 py-8 text-center text-white/60" colSpan={8}>
                   Ничего не найдено
                 </td>
               </tr>
