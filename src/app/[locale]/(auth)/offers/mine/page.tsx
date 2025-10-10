@@ -11,7 +11,7 @@ type MyOffer = {
   geo: string;
   vertical: string;
   mode: "Auto" | "Manual";
-  cap?: number | null;            // NEW
+  cap?: number | null;
   minDeposit?: number | null;
   holdDays?: number | null;
   rules?: string | null;
@@ -137,8 +137,9 @@ export default function MyOffersPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl bg-white/5 border border-white/10">
-        <table className="min-w-full text-sm">
+      {/* mobile-friendly: горизонтальный скролл + минимальная ширина таблицы */}
+      <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
+        <table className="min-w-[760px] text-sm">
           <thead className="text-white/70">
             <tr className="text-left">
               <Th>Offer</Th>
@@ -191,7 +192,7 @@ export default function MyOffersPage() {
                       <tr className="bg-white/3">
                         <td colSpan={7} className="px-4 py-3 border-t border-white/10">
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            {/* Block 1: GEO/Vertical + Cap/MinDep/Hold */}
+                            {/* Block 1 */}
                             <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                               <div className="text-white/60 text-xs">GEO / Vertical</div>
                               <div className="mt-1 font-medium">
@@ -282,10 +283,10 @@ export default function MyOffersPage() {
 }
 
 function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-3 font-semibold">{children}</th>;
+  return <th className="px-4 py-3 font-semibold whitespace-nowrap">{children}</th>;
 }
 function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 ${className ?? ""}`}>{children}</td>;
+  return <td className={`px-4 py-3 whitespace-nowrap ${className ?? ""}`}>{children}</td>;
 }
 function Badge({
   children, tone = "default",

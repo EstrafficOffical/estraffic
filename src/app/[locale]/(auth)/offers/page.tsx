@@ -16,7 +16,6 @@ type OfferRow = {
   mode: "Auto" | "Manual";
   requested: boolean;
   approved: boolean;
-  
 };
 
 export default function OffersPage() {
@@ -95,8 +94,9 @@ export default function OffersPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl bg-white/5 border border-white/10">
-        <table className="min-w-full text-sm">
+      {/* mobile-friendly: горизонтальный скролл + минимальная ширина таблицы */}
+      <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
+        <table className="min-w-[720px] text-sm">
           <thead className="text-white/70">
             <tr className="text-left">
               <Th>Offer</Th>
@@ -153,10 +153,10 @@ export default function OffersPage() {
 }
 
 function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-3 font-semibold">{children}</th>;
+  return <th className="px-4 py-3 font-semibold whitespace-nowrap">{children}</th>;
 }
 function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 ${className ?? ""}`}>{children}</td>;
+  return <td className={`px-4 py-3 whitespace-nowrap ${className ?? ""}`}>{children}</td>;
 }
 function Badge({
   children, tone = "default",
