@@ -5,10 +5,19 @@ import { revalidatePath } from "next/cache";
 import type { Wallet, Payout } from "@prisma/client";
 import HeaderClient from "./HeaderClient"; // ⭐ как на Statistics
 
+/** теперь одно поле: address (кошелёк) */
 const WalletSchema = z.object({
-  label: z.string().min(2).max(32),
-  address: z.string().min(4).max(200),
+  address: z.string().min(8, "Too short").max(200, "Too long"),
 });
+
+/** простая эвристика для подписи сети в label */
+function guessLabel(addr: string): string {
+  const a = addr.trim();
+  if (/^T[1-9A-HJ-NP-Za-km-z]{20,}$/.test(a)) return "TRC20";
+  if (/^0x[a-fA-F0-9]{40}$/.test(a)) return "ERC20";
+  if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,}$/i.test(a)) return "BTC";
+  return "CRYPTO";
+}
 
 export default async function Page({ params: { locale } }: { params: { locale: string } }) {
   const session = await auth();
@@ -57,20 +66,21 @@ export default async function Page({ params: { locale } }: { params: { locale: s
     if (!s?.user) return;
 
     const parsed = WalletSchema.safeParse({
-      label: String(formData.get("label") ?? ""),
       address: String(formData.get("address") ?? ""),
     });
     if (!parsed.success) return;
 
     const uid = (s.user as { id: string }).id;
+    const address = parsed.data.address.trim();
+    const label = guessLabel(address);
 
     await prisma.$transaction(async (tx) => {
       const hasAny = await tx.wallet.count({ where: { userId: uid } });
       await tx.wallet.create({
         data: {
           userId: uid,
-          label: parsed.data.label,
-          address: parsed.data.address,
+          label,           // подпись сети: TRC20/ERC20/BTC/CRYPTO
+          address,         // сам кошелёк/адрес
           verified: false,
           isPrimary: hasAny === 0,
         },
@@ -133,7 +143,6 @@ export default async function Page({ params: { locale } }: { params: { locale: s
 
   return (
     <section className="mx-auto max-w-7xl space-y-8 p-4 text-white/90">
-      {/* ⭐ абсолютно такая же шапка, как на Statistics */}
       <HeaderClient locale={locale} />
 
       <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Finance</h1>
@@ -148,22 +157,21 @@ export default async function Page({ params: { locale } }: { params: { locale: s
       <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <h2 className="text-xl font-semibold">Wallets</h2>
+
+          {/* ОДНО поле: адрес кошелька (TRC20/ERC20/BTC). Метки сети ставим автоматически */}
           <form action={addWallet} className="flex items-center gap-2">
             <input
-              name="label"
-              placeholder="Label (TRC20 / ERC20 / BANK)"
-              className="w-44 rounded-xl bg-black/40 px-3 py-2 text-sm outline-none ring-1 ring-white/10 focus:ring-white/20"
-            />
-            <input
               name="address"
-              placeholder="Address / IBAN / Card"
-              className="w-64 rounded-xl bg-black/40 px-3 py-2 text-sm outline-none ring-1 ring-white/10 focus:ring-white/20"
+              placeholder="Wallet address (TRC20 / ERC20 / BTC)"
+              className="w-80 rounded-xl bg-black/40 px-3 py-2 text-sm outline-none ring-1 ring-white/10 focus:ring-white/20"
+              required
             />
             <button className="rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15">
               Add Wallet
             </button>
           </form>
         </div>
+
         <div className="divide-y divide-white/10">
           {wallets.length === 0 && (
             <div className="px-4 py-6 text-white/60">Нет сохранённых реквизитов</div>
@@ -172,7 +180,7 @@ export default async function Page({ params: { locale } }: { params: { locale: s
             <div key={w.id} className="flex items-center justify-between px-4 py-3">
               <div>
                 <div className="flex items-center gap-3">
-                  <span className="font-semibold">{w.label}</span>
+                  <span className="font-semibold">{w.label ?? "Wallet"}</span>
                   {w.verified ? (
                     <Badge tone="green">Verified</Badge>
                   ) : (
@@ -180,10 +188,7 @@ export default async function Page({ params: { locale } }: { params: { locale: s
                   )}
                   {w.isPrimary && <Badge tone="blue">Primary</Badge>}
                 </div>
-                <div
-                  className="mt-1 max-w-[60vw] truncate text-sm text-white/70"
-                  title={w.address}
-                >
+                <div className="mt-1 max-w-[60vw] truncate text-sm text-white/70" title={w.address}>
                   {w.address}
                 </div>
               </div>
