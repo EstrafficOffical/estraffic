@@ -109,7 +109,7 @@ export default function MyOffersPage() {
     n == null ? "—" : `$${Number(n).toFixed(2)}`;
 
   return (
-    <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-6 text-white/90">
+    <section className="w-full mx-auto px-4 py-8 space-y-6 text-white/90">
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
@@ -137,9 +137,8 @@ export default function MyOffersPage() {
         </div>
       </div>
 
-      {/* mobile-friendly: горизонтальный скролл + минимальная ширина таблицы */}
       <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
-        <table className="min-w-[760px] text-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead className="text-white/70">
             <tr className="text-left">
               <Th>Offer</Th>
@@ -192,7 +191,6 @@ export default function MyOffersPage() {
                       <tr className="bg-white/3">
                         <td colSpan={7} className="px-4 py-3 border-t border-white/10">
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            {/* Block 1 */}
                             <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                               <div className="text-white/60 text-xs">GEO / Vertical</div>
                               <div className="mt-1 font-medium">
@@ -218,13 +216,11 @@ export default function MyOffersPage() {
                               )}
                             </div>
 
-                            {/* Block 2: Target URL */}
                             <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                               <div className="text-white/60 text-xs">Target URL</div>
                               <div className="mt-1 truncate text-sm">{r.targetUrl ?? "—"}</div>
                             </div>
 
-                            {/* Block 3: Tracking Link */}
                             <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                               <div className="text-white/60 text-xs mb-1">Tracking Link</div>
                               <div className="flex gap-2">
@@ -258,7 +254,6 @@ export default function MyOffersPage() {
                               )}
                             </div>
 
-                            {/* Block 4: Rules */}
                             {r.rules && (
                               <div className="md:col-span-3 rounded-xl border border-white/10 bg-black/20 p-3">
                                 <div className="text-white/60 text-xs">Rules</div>

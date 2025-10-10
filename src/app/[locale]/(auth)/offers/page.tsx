@@ -11,11 +11,8 @@ type OfferRow = {
   cap: number | null;
   geo: string;
   vertical: string;
-  // KPI: теперь поддерживаем текст
-  kpi1Text?: string | null;
-  kpi2Text?: string | null;
-  kpi1?: number | null;
-  kpi2?: number | null;
+  kpi1: any; // может быть текстом
+  kpi2: any; // может быть текстом
   mode: "Auto" | "Manual";
   requested: boolean;
   approved: boolean;
@@ -68,11 +65,8 @@ export default function OffersPage() {
     }
   }
 
-  const showKpi = (text?: string | null, num?: number | null) =>
-    (text && text.trim()) || (num != null ? String(num) : "—");
-
   return (
-    <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-6 text-white/90">
+    <section className="w-full mx-auto px-4 py-8 space-y-6 text-white/90">
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
@@ -100,8 +94,9 @@ export default function OffersPage() {
         </div>
       </div>
 
+      {/* full-width on desktop + safe on mobile */}
       <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
-        <table className="min-w-[720px] text-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead className="text-white/70">
             <tr className="text-left">
               <Th>Offer</Th>
@@ -128,8 +123,8 @@ export default function OffersPage() {
                   <Td>{r.cap ?? "—"}</Td>
                   <Td>{r.geo}</Td>
                   <Td>{r.vertical}</Td>
-                  <Td>{showKpi(r.kpi1Text, r.kpi1)}</Td>
-                  <Td>{showKpi(r.kpi2Text, r.kpi2)}</Td>
+                  <Td>{r.kpi1 ?? "—"}</Td>
+                  <Td>{r.kpi2 ?? "—"}</Td>
                   <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
                   <Td>
                     {r.approved ? (
