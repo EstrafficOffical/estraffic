@@ -218,16 +218,26 @@ model Click {
   @@index([subId, createdAt])
   @@index([clickId])
 }
+enum ConversionStatus {
+  CONFIRMED
+  REJECTED
+  PENDING
+}
 
 model Conversion {
   id        String         @id @default(cuid())
+  externalId  String   @unique 
   userId    String?
+  clickId   String? 
+  status    String? 
+  source    String?
   offerId   String
   subId     String?
   type      ConversionType
   amount    Decimal?       @db.Decimal(12, 2)
   currency  String?
   txId      String?
+  data      Json?  
   createdAt DateTime       @default(now())
 
   user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -238,6 +248,7 @@ model Conversion {
   @@index([offerId, createdAt])
   @@index([subId, createdAt])
 }
+
 
 model Wallet {
   id        String   @id @default(cuid())
