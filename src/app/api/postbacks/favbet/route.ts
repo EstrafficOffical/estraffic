@@ -1,7 +1,6 @@
 // src/app/api/postbacks/favbet/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { $Enums } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +25,10 @@ type FavbetRaw = {
   sig?: string;
 };
 
-const STATUS_MAP: Record<string, $Enums.ConversionStatus> = {
+// строковый тип статуса (совместим и с String-колонкой, и с enum при наличии)
+type Status = "CONFIRMED" | "REJECTED" | "PENDING";
+
+const STATUS_MAP: Record<string, Status> = {
   confirmed: "CONFIRMED",
   approve:   "CONFIRMED",
   approved:  "CONFIRMED",
@@ -39,7 +41,7 @@ const STATUS_MAP: Record<string, $Enums.ConversionStatus> = {
   cancel:    "REJECTED",
 };
 
-function normalizeStatus(v?: string): $Enums.ConversionStatus {
+function normalizeStatus(v?: string): Status {
   if (!v) return "CONFIRMED";
   const key = v.toLowerCase().trim();
   return STATUS_MAP[key] ?? "CONFIRMED";
@@ -69,9 +71,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "bad signature" }, { status: 200 });
   }
 
-  const status = normalizeStatus(q.status);
+  const status: Status = normalizeStatus(q.status);
 
-  // Decimal безопасно передавать строкой; если нет значения — вообще не передаём поле
+  // Decimal безопасно передавать строкой; если нет — поле не отправляем
   const amountNum = safeNumber(q.p1) ?? safeNumber(q.amount) ?? null;
   const amountStr = amountNum === null ? undefined : String(amountNum);
 
@@ -80,18 +82,18 @@ export async function GET(req: Request) {
     (q.ext_id && q.ext_id.trim()) ||
     `${cid}:${q.goal_id ?? ""}:${q.time ?? ""}`;
 
-  // готовим объекты без жёстких типов (TS сам выведет), amount — условно
+  // объекты для upsert; amount — условно
   const createObj = {
     externalId,
     clickId: cid,
-    status,            // $Enums.ConversionStatus
+    status, // string
     ...(amountStr !== undefined ? { amount: amountStr } : {}),
     source: "FAVBET",
   };
 
   const updateObj = {
     clickId: cid,
-    status,            // $Enums.ConversionStatus
+    status, // string
     ...(amountStr !== undefined ? { amount: amountStr } : {}),
     source: "FAVBET",
   };
@@ -99,7 +101,6 @@ export async function GET(req: Request) {
   try {
     await prisma.conversion.upsert({
       where: { externalId },
-      // мягко приводим только аргументы, чтобы обойти залипшие типы в клиенте
       create: createObj as any,
       update: updateObj as any,
     });
