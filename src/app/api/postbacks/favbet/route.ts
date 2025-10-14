@@ -1,7 +1,7 @@
 // src/app/api/postbacks/favbet/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Prisma, $Enums } from "@prisma/client";
+import { $Enums } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,7 +51,7 @@ function safeNumber(s?: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Заглушка для HMAC — включишь, когда появится secret
+// Заглушка HMAC — включишь, когда появится secret
 function verifySignature(_raw: URLSearchParams, _sig?: string) {
   return true;
 }
@@ -71,35 +71,37 @@ export async function GET(req: Request) {
 
   const status = normalizeStatus(q.status);
 
-  // amount → строка для Decimal (безопасно для тайпчека)
+  // Decimal безопасно передавать строкой; если нет значения — вообще не передаём поле
   const amountNum = safeNumber(q.p1) ?? safeNumber(q.amount) ?? null;
-  const amountStr: string | null = amountNum === null ? null : String(amountNum);
+  const amountStr = amountNum === null ? undefined : String(amountNum);
 
+  // устойчивый externalId
   const externalId =
     (q.ext_id && q.ext_id.trim()) ||
     `${cid}:${q.goal_id ?? ""}:${q.time ?? ""}`;
 
+  // готовим объекты без жёстких типов (TS сам выведет), amount — условно
+  const createObj = {
+    externalId,
+    clickId: cid,
+    status,            // $Enums.ConversionStatus
+    ...(amountStr !== undefined ? { amount: amountStr } : {}),
+    source: "FAVBET",
+  };
+
+  const updateObj = {
+    clickId: cid,
+    status,            // $Enums.ConversionStatus
+    ...(amountStr !== undefined ? { amount: amountStr } : {}),
+    source: "FAVBET",
+  };
+
   try {
-    // формируем данные для create/update с явной типизацией Unchecked*
-    const createData = {
-      externalId,
-      clickId: cid ?? null,
-      status,                   // $Enums.ConversionStatus
-      amount: amountStr as any, // Prisma.Decimal допускает строку
-      source: "FAVBET" as string | null,
-    } as Prisma.ConversionUncheckedCreateInput;
-
-    const updateData = {
-      clickId: cid ?? null,
-      status,                   // $Enums.ConversionStatus
-      amount: amountStr as any, // строка под Decimal
-      source: "FAVBET" as string | null,
-    } as Prisma.ConversionUncheckedUpdateInput;
-
     await prisma.conversion.upsert({
       where: { externalId },
-      create: createData,
-      update: updateData,
+      // мягко приводим только аргументы, чтобы обойти залипшие типы в клиенте
+      create: createObj as any,
+      update: updateObj as any,
     });
 
     return NextResponse.json({ ok: true });
