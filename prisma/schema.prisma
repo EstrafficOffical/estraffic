@@ -230,6 +230,13 @@ model Conversion {
   txId      String?
   createdAt DateTime       @default(now())
 
+  // --- НОВОЕ: безопасные доп. поля под FavBet ---
+  externalId String?  @unique         // внешний id (можно null; уникальность работает, null допускается)
+  status     String?                    // строковый статус источника
+  source     String?                    // источник, например "FAVBET"
+  clickId    String?                    // исходный cid/track_id
+  data       Json?                      // сырые параметры (опционально, удобно для отладки)
+
   user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
   offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
 
@@ -237,6 +244,7 @@ model Conversion {
   @@index([userId, createdAt])
   @@index([offerId, createdAt])
   @@index([subId, createdAt])
+  @@index([source, status])            // полезный индекс для фильтрации
 }
 
 model Wallet {

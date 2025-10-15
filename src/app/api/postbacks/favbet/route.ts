@@ -25,37 +25,26 @@ type FavbetRaw = {
   sig?: string;
 };
 
-// строковый тип статуса — совместим и с String, и с enum
-type Status = "CONFIRMED" | "REJECTED" | "PENDING";
-
-const STATUS_MAP: Record<string, Status> = {
-  confirmed: "CONFIRMED",
-  approve:   "CONFIRMED",
-  approved:  "CONFIRMED",
-  paid:      "CONFIRMED",
-  pending:   "PENDING",
-  hold:      "PENDING",
-  wait:      "PENDING",
-  rejected:  "REJECTED",
-  reject:    "REJECTED",
-  cancel:    "REJECTED",
-};
-
-function normalizeStatus(v?: string): Status {
-  if (!v) return "CONFIRMED";
-  const key = v.toLowerCase().trim();
-  return STATUS_MAP[key] ?? "CONFIRMED";
-}
-
+// ---- helpers ----
 function safeNumber(s?: string | null): number | null {
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
 
-// Заглушка HMAC — включишь, когда появится secret
+// заглушка HMAC — включишь, когда появится secret
 function verifySignature(_raw: URLSearchParams, _sig?: string) {
   return true;
+}
+
+// маппинг цели на ConversionType из твоего enum
+function mapGoalToType(goalId?: string, goal?: string): "REG" | "DEP" | "REBILL" | "SALE" | "LEAD" {
+  const g = (goalId ?? goal ?? "").toLowerCase();
+  if (g.includes("reg") || g.includes("signup") || g.includes("register")) return "REG";
+  if (g.includes("dep") || g.includes("ftd") || g.includes("deposit") || g.includes("pay")) return "DEP";
+  if (g.includes("rebill") || g.includes("recurr")) return "REBILL";
+  if (g.includes("sale") || g.includes("purchase") || g.includes("order")) return "SALE";
+  return "LEAD";
 }
 
 export async function GET(req: Request) {
@@ -71,50 +60,89 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "bad signature" }, { status: 200 });
   }
 
-  const status: Status = normalizeStatus(q.status);
-
-  // Decimal безопасно передавать строкой; если нет — поле не отправляем
+  // amount: строкой (совместимо с Decimal)
   const amountNum = safeNumber(q.p1) ?? safeNumber(q.amount) ?? null;
   const amountStr = amountNum === null ? undefined : String(amountNum);
 
-  // устойчивый externalId (если ext_id нет — составной)
-  const externalId =
-    (q.ext_id && q.ext_id.trim()) ||
-    `${cid}:${q.goal_id ?? ""}:${q.time ?? ""}`;
+  // внешний id и txId (для твоего @@unique)
+  const externalId = q.ext_id?.trim() || null;
+  const txId = externalId || `${cid}:${q.time ?? ""}`;
 
-  // объекты для записи; amount — условно
-  const createObj = {
-    externalId,
-    clickId: cid,
-    status, // string
-    ...(amountStr !== undefined ? { amount: amountStr } : {}),
-    source: "FAVBET",
-  };
+  // тип конверсии + базовые поля
+  const convType = mapGoalToType(q.goal_id, q.goal);
+  const subId = cid;
 
-  const updateObj = {
-    clickId: cid,
-    status, // string
-    ...(amountStr !== undefined ? { amount: amountStr } : {}),
-    source: "FAVBET",
+  // resolve offerId
+  let offerId = process.env.FAVBET_OFFER_ID;
+  if (!offerId) {
+    const offer = await prisma.offer.findFirst({
+      where: {
+        OR: [
+          { title: { contains: "favbet", mode: "insensitive" } },
+          { tag: { contains: "favbet", mode: "insensitive" } },
+          { targetUrl: { contains: "favbet", mode: "insensitive" } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (offer) offerId = offer.id;
+  }
+  if (!offerId) {
+    console.error("[favbet-postback] offerId unresolved", {
+      hint: "set env FAVBET_OFFER_ID or create Offer with title/tag including 'favbet'",
+      sample: { cid, ext_id: q.ext_id, goal_id: q.goal_id, time: q.time },
+    });
+    return NextResponse.json({ ok: false, error: "offerId unresolved" }, { status: 200 });
+  }
+
+  // соберём полезный raw payload (опционально, для отладки)
+  const data = {
+    rawStatus: q.status,
+    goal_id: q.goal_id,
+    goal: q.goal,
+    time: q.time,
+    adv_cid: q.adv_cid,
+    utm_source: q.utm_source,
+    utm_medium: q.utm_medium,
+    utm_campaign: q.utm_campaign,
+    utm_term: q.utm_term,
+    utm_content: q.utm_content,
+    p1: q.p1,
+    p2: q.p2,
+    p3: q.p3,
+    p4: q.p4,
+    amount: q.amount,
   };
 
   try {
-    // ручной upsert без уникального индекса
-    const existing = await prisma.conversion.findFirst({
-      where: { externalId },
-      select: { id: true },
+    // идемпотентный upsert по композитному ключу (offerId, txId)
+    await prisma.conversion.upsert({
+      where: { offerId_txId: { offerId, txId } },
+      create: {
+        offerId,
+        txId,
+        type: convType,
+        subId,
+        ...(amountStr ? { amount: amountStr } : {}),
+        // дополнительные поля:
+        externalId: externalId ?? undefined,
+        status: q.status ?? undefined,
+        source: "FAVBET",
+        clickId: cid,
+        data,
+      },
+      update: {
+        type: convType,
+        subId,
+        ...(amountStr ? { amount: amountStr } : {}),
+        // обновим доп. поля тоже
+        externalId: externalId ?? undefined,
+        status: q.status ?? undefined,
+        source: "FAVBET",
+        clickId: cid,
+        data,
+      },
     });
-
-    if (existing) {
-      await prisma.conversion.update({
-        where: { id: existing.id },
-        data: updateObj as any,
-      });
-    } else {
-      await prisma.conversion.create({
-        data: createObj as any,
-      });
-    }
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
@@ -123,7 +151,7 @@ export async function GET(req: Request) {
       code: err?.code,
       meta: err?.meta,
     });
-    // всегда 200, чтобы источник не ретраил
+    // всегда 200, чтобы FavBet не ретраил
     return NextResponse.json({ ok: false, error: "internal" }, { status: 200 });
   }
 }
