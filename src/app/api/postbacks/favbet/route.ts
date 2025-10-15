@@ -25,7 +25,7 @@ type FavbetRaw = {
   sig?: string;
 };
 
-// строковый тип статуса (совместим и с String-колонкой, и с enum при наличии)
+// строковый тип статуса — совместим и с String, и с enum
 type Status = "CONFIRMED" | "REJECTED" | "PENDING";
 
 const STATUS_MAP: Record<string, Status> = {
@@ -77,12 +77,12 @@ export async function GET(req: Request) {
   const amountNum = safeNumber(q.p1) ?? safeNumber(q.amount) ?? null;
   const amountStr = amountNum === null ? undefined : String(amountNum);
 
-  // устойчивый externalId
+  // устойчивый externalId (если ext_id нет — составной)
   const externalId =
     (q.ext_id && q.ext_id.trim()) ||
     `${cid}:${q.goal_id ?? ""}:${q.time ?? ""}`;
 
-  // объекты для upsert; amount — условно
+  // объекты для записи; amount — условно
   const createObj = {
     externalId,
     clickId: cid,
@@ -99,11 +99,22 @@ export async function GET(req: Request) {
   };
 
   try {
-    await prisma.conversion.upsert({
+    // ручной upsert без уникального индекса
+    const existing = await prisma.conversion.findFirst({
       where: { externalId },
-      create: createObj as any,
-      update: updateObj as any,
+      select: { id: true },
     });
+
+    if (existing) {
+      await prisma.conversion.update({
+        where: { id: existing.id },
+        data: updateObj as any,
+      });
+    } else {
+      await prisma.conversion.create({
+        data: createObj as any,
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
@@ -112,6 +123,7 @@ export async function GET(req: Request) {
       code: err?.code,
       meta: err?.meta,
     });
+    // всегда 200, чтобы источник не ретраил
     return NextResponse.json({ ok: false, error: "internal" }, { status: 200 });
   }
 }
