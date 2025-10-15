@@ -2,21 +2,22 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export async function POST(req: Request) {
+export async function POST(
+  _req: Request,
+  { params }: { params: { id: string } }
+) {
   const session = await auth();
   if (!session?.user || (session.user as any).role !== "ADMIN") {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
-  const body = await req.json().catch(() => ({} as any));
-  const { offerId, hidden } = body || {};
-  if (!offerId || typeof hidden !== "boolean") {
-    return NextResponse.json({ error: "MISSING_FIELDS" }, { status: 400 });
-  }
+
+  const id = params.id;
+  if (!id) return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
 
   const offer = await prisma.offer.update({
-    where: { id: offerId },
-    data: { hidden },
-    select: { id: true, hidden: true },
+    where: { id },
+    data: { status: "ARCHIVED", hidden: true },
+    select: { id: true, status: true, hidden: true },
   });
 
   return NextResponse.json({ ok: true, offer });
