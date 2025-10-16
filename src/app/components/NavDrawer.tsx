@@ -20,7 +20,7 @@ type SessionPayload = {
     email?: string | null;
     name?: string | null;
     image?: string | null;
-    role?: string | null;   // приходит из next-auth callbacks, если добавляешь
+    role?: string | null;   // приходит из next-auth callbacks
     status?: string | null;
   } | null;
 };
@@ -135,8 +135,6 @@ export default function NavDrawer({
                 {A("/offers", "Офферы")}
                 {A("/offers/mine", "Мои офферы")}
                 {A("/finance", "Финансы")}
-                {/* Конверсии показываем только ADMIN */}
-                {/* Пункт «Постбеки» убрали отсюда — только для админа ниже */}
               </div>
             )}
 
@@ -147,6 +145,7 @@ export default function NavDrawer({
                   Администрирование
                 </div>
                 <div className="list-none space-y-1">
+                  {A("/admin/stats", "Статистика (админ)")}
                   {A("/admin/offers/create", "Создать оффер")}
                   {A("/admin/offers/settings", "Настройки офферов")}
                   {A("/admin/requests", "Заявки на офферы")}
