@@ -63,23 +63,32 @@ export async function GET(req: Request) {
   const qs = new URLSearchParams(url.search);
   const q = Object.fromEntries(qs.entries()) as FavbetRaw;
 
+  // 🔎 логируем сырой запрос (параметры)
+  console.log("[favbet][in]", { path: url.pathname, query: Object.fromEntries(qs.entries()) });
+
   // принимаем id клика из трёх параметров (приоритет: cid -> click_id -> track_id)
   const cid = q.cid?.trim() || q.click_id?.trim() || q.track_id?.trim();
   if (!cid) {
+    console.warn("[favbet][warn] no cid/click_id/track_id in query");
     return NextResponse.json({ ok: false, error: "cid missing" }, { status: 200 });
   }
+
   if (!verifySignature(qs, q.sig)) {
+    console.warn("[favbet][warn] signature failed", { sig: q.sig });
     return NextResponse.json({ ok: false, error: "bad signature" }, { status: 200 });
   }
 
   // ищем клик → получаем userId/offerId/subId
   const click = await prisma.click.findFirst({
     where: { clickId: cid },
-    select: { id: true, userId: true, offerId: true, subId: true },
+    select: { id: true, userId: true, offerId: true, subId: true, clickId: true },
   });
+
+  console.log("[favbet][click]", { cid, found: !!click, click });
 
   if (!click?.userId || !click?.offerId) {
     // без привязки к юзеру/офферу в стату не попадёт — пропускаем
+    console.warn("[favbet][skip] click not found/bound", { cid });
     return NextResponse.json({ ok: true, note: "click not found -> skipped" }, { status: 200 });
   }
 
@@ -89,7 +98,7 @@ export async function GET(req: Request) {
     amountNum !== null ? "DEP" : mapGoalToType(q.goal_id, q.goal);
 
   // устойчивый txId для @@unique([offerId, txId])
-  const txId = (q.ext_id?.trim()) || `${cid}:${q.goal_id ?? ""}:${q.time ?? ""}`;
+  const txId = q.ext_id?.trim() || `${cid}:${q.goal_id ?? ""}:${q.time ?? ""}`;
 
   // createdAt из epoch
   const createdAt =
@@ -114,6 +123,17 @@ export async function GET(req: Request) {
     amount: q.amount ?? null,
   };
 
+  // логируем, что будем писать в БД
+  console.log("[favbet][upsert]", {
+    userId: click.userId,
+    offerId: click.offerId,
+    subId: click.subId ?? null,
+    txId,
+    convType,
+    amount: amountNum,
+    createdAt,
+  });
+
   try {
     await prisma.conversion.upsert({
       where: { offerId_txId: { offerId: click.offerId, txId } },
@@ -126,11 +146,11 @@ export async function GET(req: Request) {
         amount: amountNum ?? null,
         txId,
 
-        // 🔧 фикс: обязательно сохраняем clickId для связки с кликом
+        // сохраняем связку с кликом + источник
         clickId: cid,
         source: "FAVBET",
 
-        // опционально — для прозрачности
+        // дополнительная инфа (необязательно)
         externalId: q.ext_id?.trim() || null,
         status: q.status ?? null,
         data: rawData as any,
@@ -140,25 +160,23 @@ export async function GET(req: Request) {
       update: {
         type: convType,
         amount: amountNum ?? null,
-
-        // 🔧 фикс и при апдейте
         clickId: cid,
         source: "FAVBET",
-
         externalId: q.ext_id?.trim() || null,
         status: q.status ?? null,
         data: rawData as any,
-
         ...(createdAt ? { createdAt } : {}),
       },
     });
 
+    console.log("[favbet][ok]", { txId });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error("[favbet-postback]", {
+    console.error("[favbet][error]", {
       message: err?.message,
       code: err?.code,
       meta: err?.meta,
+      txId,
     });
     // всегда 200, чтобы FavBet не ретраил
     return NextResponse.json({ ok: false, error: "internal" }, { status: 200 });
