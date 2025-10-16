@@ -8,22 +8,28 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 type FavbetRaw = {
-  cid?: string;                 // {click_id} — желательно присылать именно его
-  click_id?: string;            // алиас: часто реальный UUID клика
-  track_id?: string;            // алиас: только если у вас заведено сопоставление
-  status?: string;              // {conversion_status}
-  ext_id?: string;              // {conversion_id}
-  goal_id?: string;             // {action_id}
-  goal?: string;                // {action_name}
-  time?: string;                // {conversion_time} (epoch seconds)
-  adv_cid?: string;             // {conversion_adv_cid}
+  // ИД клика (наш): лучше всего присылать click_id
+  cid?: string;
+  click_id?: string;
+  track_id?: string;
+
+  // Основные поля конверсии
+  status?: string;      // {conversion_status}
+  ext_id?: string;      // {conversion_id}
+  goal_id?: string;     // {action_id}
+  goal?: string;        // {action_name}
+  time?: string;        // {conversion_time} (epoch seconds)
+  amount?: string;      // {param1} или {amount} — сумма депозита
+
+  // Прочие (храним как raw для дебага)
+  adv_cid?: string;
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
   utm_term?: string;
   utm_content?: string;
   p1?: string; p2?: string; p3?: string; p4?: string;
-  amount?: string;
+
   sig?: string;
 };
 
@@ -40,7 +46,10 @@ function verifySignature(_raw: URLSearchParams, _sig?: string) {
 }
 
 // Маппинг цели на ConversionType из твоего enum
-function mapGoalToType(goalId?: string, goal?: string): "REG" | "DEP" | "REBILL" | "SALE" | "LEAD" {
+function mapGoalToType(
+  goalId?: string,
+  goal?: string
+): "REG" | "DEP" | "REBILL" | "SALE" | "LEAD" {
   const g = (goalId ?? goal ?? "").toLowerCase();
   if (g.includes("reg") || g.includes("signup") || g.includes("register")) return "REG";
   if (g.includes("dep") || g.includes("ftd") || g.includes("deposit") || g.includes("pay")) return "DEP";
@@ -54,12 +63,8 @@ export async function GET(req: Request) {
   const qs = new URLSearchParams(url.search);
   const q = Object.fromEntries(qs.entries()) as FavbetRaw;
 
-  // 👇 принимаем cid из трёх возможных параметров: cid → click_id → track_id
-  const cid =
-    q.cid?.trim() ||
-    q.click_id?.trim() ||
-    q.track_id?.trim();
-
+  // принимаем id клика из трёх параметров (приоритет: cid -> click_id -> track_id)
+  const cid = q.cid?.trim() || q.click_id?.trim() || q.track_id?.trim();
   if (!cid) {
     return NextResponse.json({ ok: false, error: "cid missing" }, { status: 200 });
   }
@@ -67,29 +72,47 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "bad signature" }, { status: 200 });
   }
 
-  // 1) находим клик по clickId = cid → берём userId/offerId/subId
+  // ищем клик → получаем userId/offerId/subId
   const click = await prisma.click.findFirst({
     where: { clickId: cid },
     select: { id: true, userId: true, offerId: true, subId: true },
   });
 
   if (!click?.userId || !click?.offerId) {
-    // без привязки к юзеру и офферу запись не попадёт в статистику — пропускаем
+    // без привязки к юзеру/офферу в стату не попадёт — пропускаем
     return NextResponse.json({ ok: true, note: "click not found -> skipped" }, { status: 200 });
   }
 
-  // 2) тип и сумма
+  // сумма/тип
   const amountNum = safeNumber(q.p1) ?? safeNumber(q.amount) ?? null;
-  // если есть валидный amount — считаем это депозитом
   const convType: "REG" | "DEP" | "REBILL" | "SALE" | "LEAD" =
     amountNum !== null ? "DEP" : mapGoalToType(q.goal_id, q.goal);
 
-  // 3) устойчивый txId для @@unique([offerId, txId])
+  // устойчивый txId для @@unique([offerId, txId])
   const txId = (q.ext_id?.trim()) || `${cid}:${q.goal_id ?? ""}:${q.time ?? ""}`;
 
-  // 4) createdAt из epoch, если пришёл
+  // createdAt из epoch
   const createdAt =
     q.time && /^\d+$/.test(q.time) ? new Date(Number(q.time) * 1000) : undefined;
+
+  // соберём «сырой» payload для отладки (необязательно)
+  const rawData = {
+    rawStatus: q.status ?? null,
+    goal_id: q.goal_id ?? null,
+    goal: q.goal ?? null,
+    time: q.time ?? null,
+    adv_cid: q.adv_cid ?? null,
+    utm_source: q.utm_source ?? null,
+    utm_medium: q.utm_medium ?? null,
+    utm_campaign: q.utm_campaign ?? null,
+    utm_term: q.utm_term ?? null,
+    utm_content: q.utm_content ?? null,
+    p1: q.p1 ?? null,
+    p2: q.p2 ?? null,
+    p3: q.p3 ?? null,
+    p4: q.p4 ?? null,
+    amount: q.amount ?? null,
+  };
 
   try {
     await prisma.conversion.upsert({
@@ -98,14 +121,34 @@ export async function GET(req: Request) {
         userId: click.userId,
         offerId: click.offerId,
         subId: click.subId ?? null,
-        type: convType,                       // enum ConversionType
-        amount: amountNum ?? null,            // Decimal? — число ок
+
+        type: convType,
+        amount: amountNum ?? null,
         txId,
+
+        // 🔧 фикс: обязательно сохраняем clickId для связки с кликом
+        clickId: cid,
+        source: "FAVBET",
+
+        // опционально — для прозрачности
+        externalId: q.ext_id?.trim() || null,
+        status: q.status ?? null,
+        data: rawData as any,
+
         ...(createdAt ? { createdAt } : {}),
       },
       update: {
         type: convType,
         amount: amountNum ?? null,
+
+        // 🔧 фикс и при апдейте
+        clickId: cid,
+        source: "FAVBET",
+
+        externalId: q.ext_id?.trim() || null,
+        status: q.status ?? null,
+        data: rawData as any,
+
         ...(createdAt ? { createdAt } : {}),
       },
     });
