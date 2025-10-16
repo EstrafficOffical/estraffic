@@ -8,7 +8,9 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 type FavbetRaw = {
-  cid?: string;                 // {track_id}
+  cid?: string;                 // {click_id} — желательно присылать именно его
+  click_id?: string;            // алиас: часто реальный UUID клика
+  track_id?: string;            // алиас: только если у вас заведено сопоставление
   status?: string;              // {conversion_status}
   ext_id?: string;              // {conversion_id}
   goal_id?: string;             // {action_id}
@@ -52,7 +54,12 @@ export async function GET(req: Request) {
   const qs = new URLSearchParams(url.search);
   const q = Object.fromEntries(qs.entries()) as FavbetRaw;
 
-  const cid = q.cid?.trim();
+  // 👇 принимаем cid из трёх возможных параметров: cid → click_id → track_id
+  const cid =
+    q.cid?.trim() ||
+    q.click_id?.trim() ||
+    q.track_id?.trim();
+
   if (!cid) {
     return NextResponse.json({ ok: false, error: "cid missing" }, { status: 200 });
   }
@@ -67,7 +74,7 @@ export async function GET(req: Request) {
   });
 
   if (!click?.userId || !click?.offerId) {
-    // без привязки к юзеру офферу запись не попадёт в статистику — пропускаем
+    // без привязки к юзеру и офферу запись не попадёт в статистику — пропускаем
     return NextResponse.json({ ok: true, note: "click not found -> skipped" }, { status: 200 });
   }
 
@@ -93,7 +100,6 @@ export async function GET(req: Request) {
         subId: click.subId ?? null,
         type: convType,                       // enum ConversionType
         amount: amountNum ?? null,            // Decimal? — число ок
-        // currency можно задать по желанию, если требуется
         txId,
         ...(createdAt ? { createdAt } : {}),
       },
