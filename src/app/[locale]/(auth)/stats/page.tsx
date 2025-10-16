@@ -11,6 +11,8 @@ type Summary = {
   revenue: number;
   epc: number;
   cr: number;
+  regs: number;   // NEW
+  deps: number;   // NEW
 };
 
 type ByOfferRow = {
@@ -22,6 +24,8 @@ type ByOfferRow = {
   revenue: number;
   epc: number;
   cr: number;
+  regs: number;   // NEW
+  deps: number;   // NEW
 };
 
 type BySourceRow = {
@@ -31,6 +35,8 @@ type BySourceRow = {
   revenue: number;
   epc: number;
   cr: number;
+  regs: number;   // NEW
+  deps: number;   // NEW
 };
 
 type ByEventRow = {
@@ -92,10 +98,18 @@ export default function StatsPage() {
         setSummary(
           sRes.ok && sJson && typeof sJson === "object"
             ? (sJson as Summary)
-            : { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0 },
+            : { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0, regs: 0, deps: 0 },
         );
-        setByOffer(oRes.ok ? (Array.isArray(oJson?.items) ? oJson.items : (Array.isArray(oJson) ? oJson : [])) : []);
-        setBySource(srcRes.ok ? (Array.isArray(srcJson?.items) ? srcJson.items : (Array.isArray(srcJson) ? srcJson : [])) : []);
+        setByOffer(
+          oRes.ok
+            ? (Array.isArray(oJson?.items) ? oJson.items : (Array.isArray(oJson) ? oJson : []))
+            : []
+        );
+        setBySource(
+          srcRes.ok
+            ? (Array.isArray(srcJson?.items) ? srcJson.items : (Array.isArray(srcJson) ? srcJson : []))
+            : []
+        );
         setByEvent(eRes.ok ? (Array.isArray(eJson?.items) ? eJson.items : (Array.isArray(eJson) ? eJson : [])) : []);
         setSeries(tRes.ok ? (Array.isArray(tJson?.series) ? tJson.series : (Array.isArray(tJson) ? tJson : [])) : []);
       } catch {
@@ -111,10 +125,12 @@ export default function StatsPage() {
     `$${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const kpis = useMemo(() => {
-    const s = summary || { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0 };
+    const s = summary || { clicks: 0, conversions: 0, revenue: 0, epc: 0, cr: 0, regs: 0, deps: 0 };
     return [
       { title: "Доход", value: fmtMoney(s.revenue ?? 0) },
       { title: "Клики", value: (s.clicks ?? 0).toLocaleString() },
+      { title: "Регистрации", value: (s.regs ?? 0).toLocaleString() },       // NEW
+      { title: "Депозиты", value: (s.deps ?? 0).toLocaleString() },           // NEW
       { title: "Конверсии", value: (s.conversions ?? 0).toLocaleString() },
       { title: "EPC", value: fmtMoney(s.epc ?? 0) },
       { title: "CR", value: `${(((s.cr ?? 0) * 100) || 0).toFixed(2)}%` },
@@ -166,7 +182,7 @@ export default function StatsPage() {
       </div>
 
       {/* KPI */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-7">
         {kpis.map((k) => (
           <div key={k.title} className="rounded-2xl border border-white/12 bg-white/5 px-4 py-3 backdrop-blur-md">
             <div className="text-sm text-white/75">{k.title}</div>
@@ -184,14 +200,21 @@ export default function StatsPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-white/5 text-white/70">
               <tr className="text-left">
-                <Th>Offer</Th><Th>Clicks</Th><Th>Conv</Th><Th>Revenue</Th><Th>EPC</Th><Th>CR</Th>
+                <Th>Offer</Th>
+                <Th>Clicks</Th>
+                <Th>Reg</Th>      {/* NEW */}
+                <Th>Dep</Th>      {/* NEW */}
+                <Th>Conv</Th>
+                <Th>Revenue</Th>
+                <Th>EPC</Th>
+                <Th>CR</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
               {loading ? (
-                <tr><td colSpan={6} className="p-6 text-white/60">Загрузка…</td></tr>
+                <tr><td colSpan={8} className="p-6 text-white/60">Загрузка…</td></tr>
               ) : byOffer.length === 0 ? (
-                <tr><td colSpan={6} className="p-6 text-white/60">Пусто</td></tr>
+                <tr><td colSpan={8} className="p-6 text-white/60">Пусто</td></tr>
               ) : (
                 byOffer.map((r) => (
                   <tr key={r.offerId}>
@@ -204,6 +227,8 @@ export default function StatsPage() {
                       </div>
                     </Td>
                     <Td>{r.clicks}</Td>
+                    <Td>{r.regs}</Td>
+                    <Td>{r.deps}</Td>
                     <Td>{r.conversions}</Td>
                     <Td>{fmtMoney(r.revenue)}</Td>
                     <Td>{fmtMoney(r.epc)}</Td>
@@ -225,19 +250,28 @@ export default function StatsPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-white/5 text-white/70">
               <tr className="text-left">
-                <Th>Source</Th><Th>Clicks</Th><Th>Conv</Th><Th>Revenue</Th><Th>EPC</Th><Th>CR</Th>
+                <Th>Source</Th>
+                <Th>Clicks</Th>
+                <Th>Reg</Th>      {/* NEW */}
+                <Th>Dep</Th>      {/* NEW */}
+                <Th>Conv</Th>
+                <Th>Revenue</Th>
+                <Th>EPC</Th>
+                <Th>CR</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
               {loading ? (
-                <tr><td colSpan={6} className="p-6 text-white/60">Загрузка…</td></tr>
+                <tr><td colSpan={8} className="p-6 text-white/60">Загрузка…</td></tr>
               ) : bySource.length === 0 ? (
-                <tr><td colSpan={6} className="p-6 text-white/60">Пусто</td></tr>
+                <tr><td colSpan={8} className="p-6 text-white/60">Пусто</td></tr>
               ) : (
                 bySource.map((r, i) => (
                   <tr key={(r.source ?? "") + i}>
                     <Td className="font-mono">{r.source ?? "—"}</Td>
                     <Td>{r.clicks}</Td>
+                    <Td>{r.regs}</Td>
+                    <Td>{r.deps}</Td>
                     <Td>{r.conversions}</Td>
                     <Td>{fmtMoney(r.revenue)}</Td>
                     <Td>{fmtMoney(r.epc)}</Td>
@@ -250,7 +284,7 @@ export default function StatsPage() {
         </div>
       </section>
 
-      {/* By Event */}
+      {/* By Event (как было) */}
       <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
         <div className="border-b border-white/10 px-4 py-3">
           <h2 className="text-xl font-semibold">By Event</h2>
@@ -281,7 +315,7 @@ export default function StatsPage() {
         </div>
       </section>
 
-      {/* Timeseries */}
+      {/* Timeseries (оставил без reg/dep, при желании добавим позже) */}
       <section className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-md">
         <div className="border-b border-white/10 px-4 py-3">
           <h2 className="text-xl font-semibold">Timeseries (day)</h2>

@@ -19,20 +19,20 @@ export async function GET(req: Request) {
   const { from, to } = parseRange(url);
   const userId = (session!.user as any).id as string;
 
-  const [clicks, convAgg] = await Promise.all([
+  const [clicks, convAgg, regs, deps] = await Promise.all([
     prisma.click.count({
-      where: {
-        userId,
-        createdAt: { gte: from, lt: to },
-      },
+      where: { userId, createdAt: { gte: from, lt: to } },
     }),
     prisma.conversion.aggregate({
-      where: {
-        userId,
-        createdAt: { gte: from, lt: to },
-      },
+      where: { userId, createdAt: { gte: from, lt: to } },
       _count: { _all: true },
       _sum: { amount: true },
+    }),
+    prisma.conversion.count({
+      where: { userId, createdAt: { gte: from, lt: to }, type: "REG" as any },
+    }),
+    prisma.conversion.count({
+      where: { userId, createdAt: { gte: from, lt: to }, type: "DEP" as any },
     }),
   ]);
 
@@ -46,7 +46,9 @@ export async function GET(req: Request) {
     clicks,
     conversions,
     revenue,
-    epc,        // earnings per click
-    cr,         // conversion rate (0..1)
+    epc,
+    cr,
+    regs,   // NEW
+    deps,   // NEW
   });
 }
