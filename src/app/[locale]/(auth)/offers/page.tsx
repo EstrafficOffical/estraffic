@@ -11,11 +11,12 @@ type OfferRow = {
   cap: number | null;
   geo: string;
   vertical: string;
-  kpi1: any; // может быть текстом
-  kpi2: any; // может быть текстом
+  kpi1: any;
+  kpi2: any;
+  kpi1Text?: string | null;
+  kpi2Text?: string | null;
   mode: "Auto" | "Manual";
-  requested: boolean;
-  approved: boolean;
+  displayStatus: "AVAILABLE" | "REQUESTED" | "IN_PROGRESS";
 };
 
 export default function OffersPage() {
@@ -40,7 +41,9 @@ export default function OffersPage() {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const filtered = useMemo(() => {
@@ -57,13 +60,44 @@ export default function OffersPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ offerId }),
     });
-    const data = await res.json();
+
+    const data = await res.json().catch(() => ({}));
+
     if (res.ok && data?.ok) {
-      setRows((s) => s.map((r) => (r.id === offerId ? { ...r, requested: true } : r)));
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === offerId ? { ...r, displayStatus: "REQUESTED" } : r
+        )
+      );
     } else {
       alert(data?.error ?? "Request error");
     }
   }
+
+  function renderAction(r: OfferRow) {
+    if (r.displayStatus === "IN_PROGRESS") {
+      return <Badge tone="green">In progress</Badge>;
+    }
+
+    if (r.displayStatus === "REQUESTED") {
+      return <Badge tone="orange">Requested</Badge>;
+    }
+
+    return (
+      <button
+        onClick={() => requestOffer(r.id)}
+        className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
+      >
+        Request
+      </button>
+    );
+  }
+
+  const renderKpi = (textValue?: string | null, numValue?: any) => {
+    if (textValue && String(textValue).trim()) return textValue;
+    if (numValue !== null && numValue !== undefined && String(numValue) !== "") return numValue;
+    return "—";
+  };
 
   return (
     <section className="w-full mx-auto px-4 py-8 space-y-6 text-white/90">
@@ -94,7 +128,6 @@ export default function OffersPage() {
         </div>
       </div>
 
-      {/* full-width on desktop + safe on mobile */}
       <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
         <table className="w-full min-w-[900px] text-sm">
           <thead className="text-white/70">
@@ -123,23 +156,10 @@ export default function OffersPage() {
                   <Td>{r.cap ?? "—"}</Td>
                   <Td>{r.geo}</Td>
                   <Td>{r.vertical}</Td>
-                  <Td>{r.kpi1 ?? "—"}</Td>
-                  <Td>{r.kpi2 ?? "—"}</Td>
+                  <Td>{renderKpi(r.kpi1Text, r.kpi1)}</Td>
+                  <Td>{renderKpi(r.kpi2Text, r.kpi2)}</Td>
                   <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
-                  <Td>
-                    {r.approved ? (
-                      <Badge tone="green">Approved</Badge>
-                    ) : r.requested ? (
-                      <Badge tone="orange">Requested</Badge>
-                    ) : (
-                      <button
-                        onClick={() => requestOffer(r.id)}
-                        className="rounded-xl bg-white/10 border border-white/15 px-3 py-1.5 hover:bg-white/15"
-                      >
-                        Request
-                      </button>
-                    )}
-                  </Td>
+                  <Td>{renderAction(r)}</Td>
                 </tr>
               ))
             )}
@@ -159,7 +179,8 @@ function Td({ children, className }: { children: React.ReactNode; className?: st
   return <td className={`px-4 py-3 whitespace-nowrap ${className ?? ""}`}>{children}</td>;
 }
 function Badge({
-  children, tone = "default",
+  children,
+  tone = "default",
 }: { children: React.ReactNode; tone?: "default" | "green" | "blue" | "orange" }) {
   const map: Record<string, string> = {
     default: "bg-white/10 border-white/20 text-white/80",
@@ -167,5 +188,9 @@ function Badge({
     blue: "bg-sky-400/15 border-sky-400/30 text-sky-200",
     orange: "bg-amber-400/15 border-amber-400/30 text-amber-200",
   };
-  return <span className={`inline-flex items-center rounded-lg px-2 py-1 text-xs border ${map[tone]}`}>{children}</span>;
+  return (
+    <span className={`inline-flex items-center rounded-lg px-2 py-1 text-xs border ${map[tone]}`}>
+      {children}
+    </span>
+  );
 }
