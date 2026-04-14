@@ -28,11 +28,9 @@ export default function MyOffersPage() {
   const [q, setQ] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userLoading, setUserLoading] = useState(true);
-
   const [subId, setSubId] = useState("");
   const [link, setLink] = useState<string | null>(null);
+  const [buildingFor, setBuildingFor] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -46,32 +44,17 @@ export default function MyOffersPage() {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setUserLoading(true);
-        const r = await fetch("/api/auth/session", { cache: "no-store" });
-        const j = (await r.json()) as any;
-        if (!alive) return;
-        const id = j?.user?.id as string | undefined;
-        setUserId(id ?? null);
-      } catch {
-        setUserId(null);
-      } finally {
-        if (alive) setUserLoading(false);
-      }
-    })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return rows;
-    return rows.filter(r => `${r.title} ${r.geo} ${r.vertical}`.toLowerCase().includes(s));
+    return rows.filter((r) =>
+      `${r.title} ${r.geo} ${r.vertical}`.toLowerCase().includes(s)
+    );
   }, [rows, q]);
 
   async function complete(offerId: string) {
@@ -82,27 +65,50 @@ export default function MyOffersPage() {
     });
     const j = await r.json().catch(() => ({}));
     if (r.ok && j?.ok) {
-      setRows(s => s.filter(x => x.id !== offerId));
+      setRows((s) => s.filter((x) => x.id !== offerId));
+      if (expanded === offerId) {
+        setExpanded(null);
+        setLink(null);
+      }
     } else {
       alert(j?.error ?? "Failed");
     }
   }
 
-  function buildLink(offerId: string) {
-    const base =
-      typeof window !== "undefined"
-        ? window.location.origin
-        : process.env.NEXT_PUBLIC_SITE_URL || "";
+  async function buildLink(offerId: string) {
+    try {
+      setBuildingFor(offerId);
+      setLink(null);
 
-    const u = new URL(`/r/${offerId}`, base);
-    if (subId) u.searchParams.set("subid", subId);
-    if (userId) u.searchParams.set("user", userId);
-    setLink(u.toString());
+      const r = await fetch("/api/offers/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offerId,
+          subId: subId.trim() || null,
+        }),
+      });
+
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.link) {
+        throw new Error(j?.error || "Failed to build link");
+      }
+
+      setLink(j.link);
+    } catch (e: any) {
+      alert(e?.message || "Failed to build link");
+    } finally {
+      setBuildingFor(null);
+    }
   }
 
-  function copyLink() {
+  async function copyLink() {
     if (!link) return;
-    try { navigator.clipboard?.writeText(link); } catch {}
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      alert("Не удалось скопировать ссылку");
+    }
   }
 
   const fmtMoney = (n?: number | null) =>
@@ -158,12 +164,17 @@ export default function MyOffersPage() {
             ) : (
               filtered.map((r) => {
                 const isOpen = expanded === r.id;
+                const isBuilding = buildingFor === r.id;
+
                 return (
                   <>
                     <tr key={r.id} className="border-t border-white/10">
                       <Td className="font-medium">
                         <button
-                          onClick={() => setExpanded(isOpen ? null : r.id)}
+                          onClick={() => {
+                            setExpanded(isOpen ? null : r.id);
+                            setLink(null);
+                          }}
                           className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 mr-2"
                           title={isOpen ? "Hide details" : "Show details"}
                         >
@@ -232,11 +243,10 @@ export default function MyOffersPage() {
                                 />
                                 <button
                                   onClick={() => buildLink(r.id)}
-                                  disabled={!(!userLoading && !!userId)}
+                                  disabled={isBuilding}
                                   className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
-                                  title={userLoading ? "Loading user…" : userId ? "" : "No user id"}
                                 >
-                                  Build link
+                                  {isBuilding ? "Building…" : "Build link"}
                                 </button>
                                 <button
                                   onClick={copyLink}
