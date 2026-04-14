@@ -63,15 +63,23 @@ export default function OffersPage() {
 
     const data = await res.json().catch(() => ({}));
 
-    if (res.ok && data?.ok) {
-      setRows((prev) =>
-        prev.map((r) =>
-          r.id === offerId ? { ...r, displayStatus: "REQUESTED" } : r
-        )
-      );
-    } else {
+    if (!res.ok || !data?.ok) {
       alert(data?.error ?? "Request error");
+      return;
     }
+
+    const nextStatus =
+      data?.status === "IN_PROGRESS"
+        ? "IN_PROGRESS"
+        : data?.status === "REQUESTED"
+        ? "REQUESTED"
+        : "AVAILABLE";
+
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === offerId ? { ...r, displayStatus: nextStatus } : r
+      )
+    );
   }
 
   function renderAction(r: OfferRow) {

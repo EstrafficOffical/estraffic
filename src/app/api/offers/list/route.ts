@@ -49,69 +49,36 @@ export async function GET() {
     },
   });
 
-  const items = offers
-    .map((o) => {
-      const accessApproved = !!o.accesses[0]?.approved;
-      const latestRequest = o.requests[0] ?? null;
+  const items = offers.map((o) => {
+    const accessApproved = !!o.accesses[0]?.approved;
+    const latestRequest = o.requests[0] ?? null;
 
-      // Если доступ уже выдан — оффер в работе
-      if (accessApproved) {
-        return {
-          id: o.id,
-          title: o.title,
-          geo: o.geo,
-          vertical: o.vertical,
-          cpa: o.cpa != null ? Number(o.cpa) : null,
-          cap: o.cap != null ? Number(o.cap) : null,
-          kpi1Text: o.kpi1Text ?? null,
-          kpi2Text: o.kpi2Text ?? null,
-          kpi1: o.kpi1 ?? null,
-          kpi2: o.kpi2 ?? null,
-          mode: o.mode,
-          displayStatus: "IN_PROGRESS" as DisplayStatus,
-        };
-      }
+    let displayStatus: DisplayStatus = "AVAILABLE";
 
-      // Если последняя заявка отклонена — скрываем оффер из каталога
-      if (latestRequest?.status === "REJECTED") {
-        return null;
-      }
+    if (accessApproved) {
+      displayStatus = "IN_PROGRESS";
+    } else if (latestRequest?.status === "PENDING") {
+      displayStatus = "REQUESTED";
+    } else {
+      // REJECTED, APPROVED без активного доступа, completed — всё это снова AVAILABLE
+      displayStatus = "AVAILABLE";
+    }
 
-      // Если последняя заявка pending — показываем Requested
-      if (latestRequest?.status === "PENDING") {
-        return {
-          id: o.id,
-          title: o.title,
-          geo: o.geo,
-          vertical: o.vertical,
-          cpa: o.cpa != null ? Number(o.cpa) : null,
-          cap: o.cap != null ? Number(o.cap) : null,
-          kpi1Text: o.kpi1Text ?? null,
-          kpi2Text: o.kpi2Text ?? null,
-          kpi1: o.kpi1 ?? null,
-          kpi2: o.kpi2 ?? null,
-          mode: o.mode,
-          displayStatus: "REQUESTED" as DisplayStatus,
-        };
-      }
-
-      // Если заявки нет — доступен для запроса
-      return {
-        id: o.id,
-        title: o.title,
-        geo: o.geo,
-        vertical: o.vertical,
-        cpa: o.cpa != null ? Number(o.cpa) : null,
-        cap: o.cap != null ? Number(o.cap) : null,
-        kpi1Text: o.kpi1Text ?? null,
-        kpi2Text: o.kpi2Text ?? null,
-        kpi1: o.kpi1 ?? null,
-        kpi2: o.kpi2 ?? null,
-        mode: o.mode,
-        displayStatus: "AVAILABLE" as DisplayStatus,
-      };
-    })
-    .filter(Boolean);
+    return {
+      id: o.id,
+      title: o.title,
+      geo: o.geo,
+      vertical: o.vertical,
+      cpa: o.cpa != null ? Number(o.cpa) : null,
+      cap: o.cap != null ? Number(o.cap) : null,
+      kpi1Text: o.kpi1Text ?? null,
+      kpi2Text: o.kpi2Text ?? null,
+      kpi1: o.kpi1 ?? null,
+      kpi2: o.kpi2 ?? null,
+      mode: o.mode,
+      displayStatus,
+    };
+  });
 
   return NextResponse.json({ items });
 }
