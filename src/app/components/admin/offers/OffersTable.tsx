@@ -20,10 +20,12 @@ export default function OffersTable({
   rows,
   onRowChanged,
   onRowRemoved,
+  onEditRow,
 }: {
   rows: OfferRow[];
   onRowChanged: (id: string, patch: Partial<OfferRow>) => void;
   onRowRemoved: (id: string) => void;
+  onEditRow: (row: OfferRow) => void;
 }) {
   const fmtMoney = (n?: number | null) => (n == null ? "—" : `$${Number(n).toFixed(2)}`);
 
@@ -66,15 +68,7 @@ export default function OffersTable({
                     id={r.id}
                     title={r.title}
                     hidden={r.hidden}
-                    geo={r.geo}
-                    vertical={r.vertical}
-                    tier={r.tier}
-                    cpa={r.cpa}
-                    cap={r.cap}
-                    mode={r.mode}
-                    minDeposit={r.minDeposit}
-                    holdDays={r.holdDays}
-                    onRowPatched={(patch) => onRowChanged(r.id, patch)}
+                    onEdit={() => onEditRow(r)}
                     onToggledHidden={(next) => onRowChanged(r.id, { hidden: next })}
                     onArchived={() => onRowChanged(r.id, { hidden: true })}
                     onDeleted={() => onRowRemoved(r.id)}

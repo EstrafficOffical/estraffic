@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import NavDrawer from "@/app/components/NavDrawer";
 import OffersTable, { OfferRow } from "@/app/components/admin/offers/OffersTable";
+import EditOfferModal from "@/app/components/admin/offers/EditOfferModal";
 
 export default function AdminOffersListPage() {
   const pathname = usePathname();
@@ -14,6 +15,9 @@ export default function AdminOffersListPage() {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
+
+  const [editingRow, setEditingRow] = useState<OfferRow | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -31,7 +35,9 @@ export default function AdminOffersListPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -40,6 +46,16 @@ export default function AdminOffersListPage() {
       `${r.title} ${r.geo} ${r.vertical}`.toLowerCase().includes(s)
     );
   }, [rows, q]);
+
+  function openEdit(row: OfferRow) {
+    setEditingRow(row);
+    setEditOpen(true);
+  }
+
+  function closeEdit() {
+    setEditOpen(false);
+    setEditingRow(null);
+  }
 
   return (
     <section className="relative mx-auto max-w-7xl px-4 py-8 space-y-6 text-white/90">
@@ -70,7 +86,7 @@ export default function AdminOffersListPage() {
         </div>
         <button
           onClick={load}
-          className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 hover:bg:white/15"
+          className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 hover:bg-white/15"
         >
           Обновить
         </button>
@@ -87,12 +103,25 @@ export default function AdminOffersListPage() {
       ) : (
         <OffersTable
           rows={filtered}
+          onEditRow={openEdit}
           onRowChanged={(id, patch) =>
             setRows((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)))
           }
           onRowRemoved={(id) => setRows((prev) => prev.filter((x) => x.id !== id))}
         />
       )}
+
+      <EditOfferModal
+        open={editOpen}
+        offer={editingRow}
+        onClose={closeEdit}
+        onSaved={(patch) => {
+          if (!editingRow) return;
+          setRows((prev) =>
+            prev.map((x) => (x.id === editingRow.id ? { ...x, ...patch } : x))
+          );
+        }}
+      />
 
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} isAdmin />
     </section>
