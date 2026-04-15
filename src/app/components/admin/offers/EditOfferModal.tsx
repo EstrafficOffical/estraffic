@@ -69,10 +69,12 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
   if (!open || !offer) return null;
 
   async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg(null);
-    setSaving(true);
+  e.preventDefault();
 
+  if (!offer) return;
+
+  setMsg(null);
+  setSaving(true);
     try {
       const res = await fetch("/api/admin/offers/update", {
         method: "POST",
