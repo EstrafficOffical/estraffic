@@ -1,4 +1,3 @@
-// src/app/[locale]/(auth)/admin/users/page.tsx
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
@@ -22,6 +21,7 @@ type UserRow = {
   telegram?: string | null;
   role: string;
   status: string;
+  tier: number;
   createdAt: Date;
   wallets?: {
     id: string;
@@ -82,6 +82,7 @@ export default async function Page({
         telegram: true as any,
         role: true,
         status: true as any,
+        tier: true,
         createdAt: true,
         wallets: {
           select: { id: true, label: true, address: true, isPrimary: true, verified: true },
@@ -120,7 +121,7 @@ export default async function Page({
       </form>
 
       <div className="rounded-xl border border-white/10 overflow-x-auto">
-        <table className="min-w-[1100px] w-full text-sm">
+        <table className="min-w-[1180px] w-full text-sm">
           <thead className="bg-white/5">
             <tr>
               <th className="text-left px-3 py-2 whitespace-nowrap">Дата</th>
@@ -128,6 +129,7 @@ export default async function Page({
               <th className="text-left px-3 py-2 whitespace-nowrap">Кошельки</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">ID</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Имя/Telegram</th>
+              <th className="text-left px-3 py-2 whitespace-nowrap">Tier</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Роль</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Статус</th>
               <th className="text-left px-3 py-2 whitespace-nowrap">Действия</th>
@@ -141,7 +143,6 @@ export default async function Page({
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">{u.email}</td>
 
-                {/* Кошельки */}
                 <td className="px-3 py-2 align-top">
                   <WalletsCell wallets={u.wallets ?? []} />
                 </td>
@@ -151,6 +152,7 @@ export default async function Page({
                   <div className="text-white/90">{u.name ?? "—"}</div>
                   <div className="text-white/50">{u.telegram ?? "—"}</div>
                 </td>
+                <td className="px-3 py-2 whitespace-nowrap">Tier {u.tier}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{u.role}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{u.status}</td>
                 <td className="px-3 py-2 whitespace-nowrap">
@@ -160,7 +162,7 @@ export default async function Page({
             ))}
             {users.length === 0 && (
               <tr>
-                <td className="px-3 py-8 text-center text-white/60" colSpan={8}>
+                <td className="px-3 py-8 text-center text-white/60" colSpan={9}>
                   Ничего не найдено
                 </td>
               </tr>

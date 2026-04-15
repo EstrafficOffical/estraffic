@@ -7,6 +7,7 @@ export type OfferRow = {
   title: string;
   geo: string;
   vertical: string;
+  tier: number;
   cpa: number | null;
   cap?: number | null;
   mode: "Auto" | "Manual";
@@ -34,6 +35,7 @@ export default function OffersTable({
             <Th>Offer</Th>
             <Th>GEO</Th>
             <Th>Vertical</Th>
+            <Th>Tier</Th>
             <Th>CPA</Th>
             <Th>Cap</Th>
             <Th>Mode</Th>
@@ -45,13 +47,14 @@ export default function OffersTable({
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={10} className="p-6 text-white/60">Пусто</td></tr>
+            <tr><td colSpan={11} className="p-6 text-white/60">Пусто</td></tr>
           ) : (
             rows.map((r) => (
               <tr key={r.id} className="border-t border-white/10">
                 <Td className="font-medium">{r.title}</Td>
                 <Td>{r.geo}</Td>
                 <Td>{r.vertical}</Td>
+                <Td><Badge tone="default">Tier {r.tier}</Badge></Td>
                 <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
                 <Td>{r.cap ?? "—"}</Td>
                 <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>

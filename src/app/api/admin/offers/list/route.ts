@@ -15,6 +15,7 @@ export async function GET() {
       title: true,
       geo: true,
       vertical: true,
+      tier: true,
       cpa: true,
       cap: true,
       mode: true,

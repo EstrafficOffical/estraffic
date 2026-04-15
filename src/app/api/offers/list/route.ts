@@ -12,10 +12,18 @@ export async function GET() {
 
   const userId = (session.user as any).id as string;
 
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { tier: true },
+  });
+
+  const userTier = user?.tier ?? 3;
+
   const offers = await prisma.offer.findMany({
     where: {
       hidden: false,
       status: "ACTIVE",
+      tier: { gte: userTier },
     },
     orderBy: { createdAt: "desc" },
     select: {
@@ -23,6 +31,7 @@ export async function GET() {
       title: true,
       geo: true,
       vertical: true,
+      tier: true,
       cpa: true,
       cap: true,
       kpi1: true,
@@ -60,7 +69,6 @@ export async function GET() {
     } else if (latestRequest?.status === "PENDING") {
       displayStatus = "REQUESTED";
     } else {
-      // REJECTED, APPROVED без активного доступа, completed — всё это снова AVAILABLE
       displayStatus = "AVAILABLE";
     }
 
@@ -69,6 +77,7 @@ export async function GET() {
       title: o.title,
       geo: o.geo,
       vertical: o.vertical,
+      tier: o.tier,
       cpa: o.cpa != null ? Number(o.cpa) : null,
       cap: o.cap != null ? Number(o.cap) : null,
       kpi1Text: o.kpi1Text ?? null,
