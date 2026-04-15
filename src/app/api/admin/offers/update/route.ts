@@ -134,6 +134,12 @@ export async function POST(req: Request) {
       minDeposit: true,
       holdDays: true,
       hidden: true,
+      kpi1Text: true,
+      kpi2Text: true,
+      rules: true,
+      notes: true,
+      targetUrl: true,
+      trackingTemplate: true,
     },
   });
 

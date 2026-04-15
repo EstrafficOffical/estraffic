@@ -13,6 +13,7 @@ export async function GET() {
     select: {
       id: true,
       title: true,
+      tag: true,
       geo: true,
       vertical: true,
       tier: true,
@@ -23,10 +24,22 @@ export async function GET() {
       hidden: true,
       minDeposit: true,
       holdDays: true,
+      kpi1Text: true,
+      kpi2Text: true,
+      rules: true,
+      notes: true,
+      targetUrl: true,
+      trackingTemplate: true,
       createdAt: true,
       updatedAt: true,
     } as any,
   });
 
-  return NextResponse.json({ items });
+  return NextResponse.json({
+    items: items.map((x) => ({
+      ...x,
+      cpa: x.cpa != null ? Number(x.cpa) : null,
+      minDeposit: x.minDeposit != null ? Number(x.minDeposit) : null,
+    })),
+  });
 }

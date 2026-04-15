@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 export type EditableOffer = {
   id: string;
   title: string;
+  tag?: string | null;
   geo: string;
   vertical: string;
   tier: number;
@@ -14,6 +15,12 @@ export type EditableOffer = {
   hidden: boolean;
   minDeposit?: number | null;
   holdDays?: number | null;
+  kpi1Text?: string | null;
+  kpi2Text?: string | null;
+  rules?: string | null;
+  notes?: string | null;
+  targetUrl?: string | null;
+  trackingTemplate?: string | null;
 };
 
 type Props = {
@@ -29,6 +36,7 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
 
   const [form, setForm] = useState({
     title: "",
+    tag: "",
     geo: "",
     vertical: "",
     tier: "3",
@@ -37,6 +45,12 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
     mode: "Manual" as "Auto" | "Manual",
     minDeposit: "",
     holdDays: "",
+    kpi1Text: "",
+    kpi2Text: "",
+    rules: "",
+    notes: "",
+    targetUrl: "",
+    trackingTemplate: "",
   });
 
   useEffect(() => {
@@ -44,6 +58,7 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
     setMsg(null);
     setForm({
       title: offer.title ?? "",
+      tag: offer.tag ?? "",
       geo: offer.geo ?? "",
       vertical: offer.vertical ?? "",
       tier: String(offer.tier ?? 3),
@@ -52,6 +67,12 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
       mode: offer.mode ?? "Manual",
       minDeposit: offer.minDeposit == null ? "" : String(offer.minDeposit),
       holdDays: offer.holdDays == null ? "" : String(offer.holdDays),
+      kpi1Text: offer.kpi1Text ?? "",
+      kpi2Text: offer.kpi2Text ?? "",
+      rules: offer.rules ?? "",
+      notes: offer.notes ?? "",
+      targetUrl: offer.targetUrl ?? "",
+      trackingTemplate: offer.trackingTemplate ?? "",
     });
   }, [offer, open]);
 
@@ -69,12 +90,12 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
   if (!open || !offer) return null;
 
   async function submit(e: React.FormEvent) {
-  e.preventDefault();
+    e.preventDefault();
+    if (!offer) return;
 
-  if (!offer) return;
+    setMsg(null);
+    setSaving(true);
 
-  setMsg(null);
-  setSaving(true);
     try {
       const res = await fetch("/api/admin/offers/update", {
         method: "POST",
@@ -82,6 +103,7 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
         body: JSON.stringify({
           offerId: offer.id,
           title: form.title.trim(),
+          tag: form.tag.trim() === "" ? null : form.tag.trim(),
           geo: form.geo.trim(),
           vertical: form.vertical.trim(),
           tier: Number(form.tier),
@@ -90,6 +112,13 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
           mode: form.mode,
           minDeposit: form.minDeposit.trim() === "" ? null : Number(form.minDeposit),
           holdDays: form.holdDays.trim() === "" ? null : Number(form.holdDays),
+          kpi1Text: form.kpi1Text.trim() === "" ? null : form.kpi1Text.trim(),
+          kpi2Text: form.kpi2Text.trim() === "" ? null : form.kpi2Text.trim(),
+          rules: form.rules.trim() === "" ? null : form.rules.trim(),
+          notes: form.notes.trim() === "" ? null : form.notes.trim(),
+          targetUrl: form.targetUrl.trim() === "" ? null : form.targetUrl.trim(),
+          trackingTemplate:
+            form.trackingTemplate.trim() === "" ? null : form.trackingTemplate.trim(),
         }),
       });
 
@@ -101,6 +130,7 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
       const updated = data.offer;
       onSaved({
         title: updated.title,
+        tag: updated.tag,
         geo: updated.geo,
         vertical: updated.vertical,
         tier: updated.tier,
@@ -110,6 +140,12 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
         minDeposit: updated.minDeposit,
         holdDays: updated.holdDays,
         hidden: updated.hidden,
+        kpi1Text: updated.kpi1Text,
+        kpi2Text: updated.kpi2Text,
+        rules: updated.rules,
+        notes: updated.notes,
+        targetUrl: updated.targetUrl,
+        trackingTemplate: updated.trackingTemplate,
       });
 
       onClose();
@@ -130,13 +166,13 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
       <div className="fixed inset-0 z-[71] flex items-center justify-center p-4">
         <form
           onSubmit={submit}
-          className="w-full max-w-3xl rounded-3xl border border-white/15 bg-zinc-950/95 p-5 text-white shadow-[0_20px_80px_rgba(0,0,0,.55)]"
+          className="w-full max-w-4xl rounded-3xl border border-white/15 bg-zinc-950/95 p-5 text-white shadow-[0_20px_80px_rgba(0,0,0,.55)]"
         >
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold">Редактировать оффер</h2>
               <p className="mt-1 text-sm text-white/55">
-                Измени основные параметры оффера в одном окне.
+                Здесь можно изменить уже почти всё содержимое карточки.
               </p>
             </div>
 
@@ -157,6 +193,14 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
                 onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))}
                 className="w-full rounded-xl bg-black/35 px-3 py-2.5 outline-none ring-1 ring-white/10 focus:ring-white/20"
                 required
+              />
+            </Field>
+
+            <Field label="Tag">
+              <input
+                value={form.tag}
+                onChange={(e) => setForm((s) => ({ ...s, tag: e.target.value }))}
+                className="w-full rounded-xl bg-black/35 px-3 py-2.5 outline-none ring-1 ring-white/10 focus:ring-white/20"
               />
             </Field>
 
@@ -190,6 +234,17 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
               </select>
             </Field>
 
+            <Field label="Mode" required>
+              <select
+                value={form.mode}
+                onChange={(e) => setForm((s) => ({ ...s, mode: e.target.value as "Auto" | "Manual" }))}
+                className="w-full rounded-xl bg-black/35 px-3 py-2.5 outline-none ring-1 ring-white/10 focus:ring-white/20"
+              >
+                <option value="Manual">Manual</option>
+                <option value="Auto">Auto</option>
+              </select>
+            </Field>
+
             <Field label="CPA">
               <input
                 type="number"
@@ -213,17 +268,6 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
               />
             </Field>
 
-            <Field label="Mode" required>
-              <select
-                value={form.mode}
-                onChange={(e) => setForm((s) => ({ ...s, mode: e.target.value as "Auto" | "Manual" }))}
-                className="w-full rounded-xl bg-black/35 px-3 py-2.5 outline-none ring-1 ring-white/10 focus:ring-white/20"
-              >
-                <option value="Manual">Manual</option>
-                <option value="Auto">Auto</option>
-              </select>
-            </Field>
-
             <Field label="Min deposit">
               <input
                 type="number"
@@ -244,6 +288,58 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
                 onChange={(e) => setForm((s) => ({ ...s, holdDays: e.target.value }))}
                 className="w-full rounded-xl bg-black/35 px-3 py-2.5 outline-none ring-1 ring-white/10 focus:ring-white/20"
                 placeholder="empty = null"
+              />
+            </Field>
+
+            <Field label="KPI 1">
+              <input
+                value={form.kpi1Text}
+                onChange={(e) => setForm((s) => ({ ...s, kpi1Text: e.target.value }))}
+                className="w-full rounded-xl bg-black/35 px-3 py-2.5 outline-none ring-1 ring-white/10 focus:ring-white/20"
+              />
+            </Field>
+
+            <Field label="KPI 2">
+              <input
+                value={form.kpi2Text}
+                onChange={(e) => setForm((s) => ({ ...s, kpi2Text: e.target.value }))}
+                className="w-full rounded-xl bg-black/35 px-3 py-2.5 outline-none ring-1 ring-white/10 focus:ring-white/20"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4">
+            <Field label="Rules">
+              <textarea
+                rows={4}
+                value={form.rules}
+                onChange={(e) => setForm((s) => ({ ...s, rules: e.target.value }))}
+                className="w-full rounded-2xl bg-black/35 px-3 py-3 outline-none ring-1 ring-white/10 focus:ring-white/20 resize-y"
+              />
+            </Field>
+
+            <Field label="Notes">
+              <textarea
+                rows={3}
+                value={form.notes}
+                onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
+                className="w-full rounded-2xl bg-black/35 px-3 py-3 outline-none ring-1 ring-white/10 focus:ring-white/20 resize-y"
+              />
+            </Field>
+
+            <Field label="Target URL">
+              <input
+                value={form.targetUrl}
+                onChange={(e) => setForm((s) => ({ ...s, targetUrl: e.target.value }))}
+                className="w-full rounded-xl bg-black/35 px-3 py-2.5 outline-none ring-1 ring-white/10 focus:ring-white/20"
+              />
+            </Field>
+
+            <Field label="Tracking template">
+              <input
+                value={form.trackingTemplate}
+                onChange={(e) => setForm((s) => ({ ...s, trackingTemplate: e.target.value }))}
+                className="w-full rounded-xl bg-black/35 px-3 py-2.5 outline-none ring-1 ring-white/10 focus:ring-white/20"
               />
             </Field>
           </div>

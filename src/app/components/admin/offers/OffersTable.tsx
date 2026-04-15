@@ -5,6 +5,7 @@ import RowActions from "./RowActions";
 export type OfferRow = {
   id: string;
   title: string;
+  tag?: string | null;
   geo: string;
   vertical: string;
   tier: number;
@@ -14,6 +15,12 @@ export type OfferRow = {
   hidden: boolean;
   minDeposit?: number | null;
   holdDays?: number | null;
+  kpi1Text?: string | null;
+  kpi2Text?: string | null;
+  rules?: string | null;
+  notes?: string | null;
+  targetUrl?: string | null;
+  trackingTemplate?: string | null;
 };
 
 export default function OffersTable({
