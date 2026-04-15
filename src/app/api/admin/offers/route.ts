@@ -9,6 +9,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({} as any));
+
   const {
     title,
     tag,
@@ -17,10 +18,15 @@ export async function POST(req: Request) {
     cpa,
     mode,
     targetUrl,
+    trackingTemplate,
     cap,
+    tier,
+    minDeposit,
+    holdDays,
     kpi1Text,
     kpi2Text,
-    tier,
+    rules,
+    notes,
   } = body || {};
 
   if (!title || !geo || !vertical || !mode) {
@@ -34,6 +40,9 @@ export async function POST(req: Request) {
     vertical: String(vertical),
     mode,
     targetUrl: targetUrl ?? null,
+    trackingTemplate: trackingTemplate ?? null,
+    rules: rules ?? null,
+    notes: notes ?? null,
   };
 
   if (cpa !== undefined && cpa !== null && cpa !== "") {
@@ -50,6 +59,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "INVALID_CAP" }, { status: 400 });
     }
     data.cap = n;
+  }
+
+  if (minDeposit !== undefined && minDeposit !== null && minDeposit !== "") {
+    const n = Number(minDeposit);
+    if (!Number.isFinite(n) || n < 0) {
+      return NextResponse.json({ error: "INVALID_MIN_DEPOSIT" }, { status: 400 });
+    }
+    data.minDeposit = n;
+  }
+
+  if (holdDays !== undefined && holdDays !== null && holdDays !== "") {
+    const n = parseInt(String(holdDays), 10);
+    if (!Number.isFinite(n) || n < 0) {
+      return NextResponse.json({ error: "INVALID_HOLD_DAYS" }, { status: 400 });
+    }
+    data.holdDays = n;
   }
 
   const tierNum = Number(tier ?? 3);

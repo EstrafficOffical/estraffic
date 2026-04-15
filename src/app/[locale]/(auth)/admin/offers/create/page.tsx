@@ -22,12 +22,21 @@ export default function CreateOfferPage() {
     geo: "",
     vertical: "",
     cpa: "",
-    kpi1Text: "",
-    kpi2Text: "",
-    mode: "Manual" as Mode,
-    targetUrl: "",
     cap: "",
     tier: 3 as Tier,
+    mode: "Manual" as Mode,
+
+    minDeposit: "",
+    holdDays: "",
+
+    kpi1Text: "",
+    kpi2Text: "",
+
+    rules: "",
+    notes: "",
+
+    targetUrl: "",
+    trackingTemplate: "",
   });
 
   async function submit(e: React.FormEvent) {
@@ -42,12 +51,21 @@ export default function CreateOfferPage() {
         geo: form.geo.trim(),
         vertical: form.vertical.trim(),
         cpa: form.cpa ? Number(form.cpa) : null,
-        kpi1Text: form.kpi1Text.trim() || null,
-        kpi2Text: form.kpi2Text.trim() || null,
-        mode: form.mode,
-        targetUrl: form.targetUrl.trim() || null,
         cap: form.cap ? Number(form.cap) : null,
         tier: Number(form.tier),
+        mode: form.mode,
+
+        minDeposit: form.minDeposit ? Number(form.minDeposit) : null,
+        holdDays: form.holdDays ? Number(form.holdDays) : null,
+
+        kpi1Text: form.kpi1Text.trim() || null,
+        kpi2Text: form.kpi2Text.trim() || null,
+
+        rules: form.rules.trim() || null,
+        notes: form.notes.trim() || null,
+
+        targetUrl: form.targetUrl.trim() || null,
+        trackingTemplate: form.trackingTemplate.trim() || null,
       };
 
       const res = await fetch("/api/admin/offers", {
@@ -71,7 +89,7 @@ export default function CreateOfferPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-4 text-white/90 space-y-6">
+    <div className="mx-auto max-w-6xl p-4 text-white/90 space-y-6">
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
@@ -84,11 +102,16 @@ export default function CreateOfferPage() {
         <span className="font-semibold">Estrella</span>
       </div>
 
-      <h1 className="text-3xl md:text-4xl font-extrabold">Создать оффер</h1>
+      <div className="space-y-2">
+        <h1 className="text-3xl md:text-4xl font-extrabold">Создать оффер</h1>
+        <p className="text-sm text-white/60">
+          Заполни не только базовые поля, но и реальные условия оффера — они потом будут видны пользователям в карточках.
+        </p>
+      </div>
 
       <form
         onSubmit={submit}
-        className="rounded-2xl border border-white/15 bg-white/5 p-4 backdrop-blur-md space-y-4"
+        className="rounded-3xl border border-white/15 bg-white/5 p-5 backdrop-blur-md space-y-6"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Title" required>
@@ -114,7 +137,7 @@ export default function CreateOfferPage() {
               className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
               value={form.geo}
               onChange={(e) => setForm((s) => ({ ...s, geo: e.target.value }))}
-              placeholder="US, UA, …"
+              placeholder="US, UA, ..."
               required
             />
           </Field>
@@ -124,12 +147,12 @@ export default function CreateOfferPage() {
               className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
               value={form.vertical}
               onChange={(e) => setForm((s) => ({ ...s, vertical: e.target.value }))}
-              placeholder="Finance, Dating, …"
+              placeholder="Finance, Gambling, Dating ..."
               required
             />
           </Field>
 
-          <Field label="CPA ($)">
+          <Field label="CPA / FTD ($)">
             <input
               type="number"
               step="0.01"
@@ -175,7 +198,30 @@ export default function CreateOfferPage() {
             </select>
           </Field>
 
-          <Field label="KPI1 (текст)">
+          <Field label="Min deposit ($)">
+            <input
+              type="number"
+              step="0.01"
+              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
+              value={form.minDeposit}
+              onChange={(e) => setForm((s) => ({ ...s, minDeposit: e.target.value }))}
+              placeholder="например 20"
+            />
+          </Field>
+
+          <Field label="Hold days">
+            <input
+              type="number"
+              min={0}
+              step="1"
+              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
+              value={form.holdDays}
+              onChange={(e) => setForm((s) => ({ ...s, holdDays: e.target.value }))}
+              placeholder="например 7"
+            />
+          </Field>
+
+          <Field label="KPI 1 (текст)">
             <input
               className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
               value={form.kpi1Text}
@@ -184,12 +230,34 @@ export default function CreateOfferPage() {
             />
           </Field>
 
-          <Field label="KPI2 (текст)">
+          <Field label="KPI 2 (текст)">
             <input
               className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
               value={form.kpi2Text}
               onChange={(e) => setForm((s) => ({ ...s, kpi2Text: e.target.value }))}
-              placeholder="напр. CR > 10%"
+              placeholder="напр. Только SEO / CR > 10%"
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          <Field label="Rules">
+            <textarea
+              rows={5}
+              className="w-full rounded-2xl bg-black/40 px-3 py-3 outline-none ring-1 ring-white/10 focus:ring-white/20 resize-y"
+              value={form.rules}
+              onChange={(e) => setForm((s) => ({ ...s, rules: e.target.value }))}
+              placeholder="Полные правила оффера: allowed sources, запреты, KPI, условия аппрува, GEO-specific notes..."
+            />
+          </Field>
+
+          <Field label="Notes">
+            <textarea
+              rows={4}
+              className="w-full rounded-2xl bg-black/40 px-3 py-3 outline-none ring-1 ring-white/10 focus:ring-white/20 resize-y"
+              value={form.notes}
+              onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
+              placeholder="Внутренние заметки или короткое описание оффера для веба"
             />
           </Field>
 
@@ -198,7 +266,16 @@ export default function CreateOfferPage() {
               className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
               value={form.targetUrl}
               onChange={(e) => setForm((s) => ({ ...s, targetUrl: e.target.value }))}
-              placeholder="https://…"
+              placeholder="https://..."
+            />
+          </Field>
+
+          <Field label="Tracking template">
+            <input
+              className="w-full rounded-xl bg-black/40 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-white/20"
+              value={form.trackingTemplate}
+              onChange={(e) => setForm((s) => ({ ...s, trackingTemplate: e.target.value }))}
+              placeholder="https://partner.com/?subid={clickId}"
             />
           </Field>
         </div>
