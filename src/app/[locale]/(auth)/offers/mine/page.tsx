@@ -7,6 +7,8 @@ import NavDrawer from "@/app/components/NavDrawer";
 type MyOffer = {
   id: string;
   title: string;
+  tag?: string | null;
+  tier: number;
   cpa: number | null;
   geo: string;
   vertical: string;
@@ -15,7 +17,12 @@ type MyOffer = {
   minDeposit?: number | null;
   holdDays?: number | null;
   rules?: string | null;
+  notes?: string | null;
   targetUrl?: string | null;
+  kpi1?: any;
+  kpi2?: any;
+  kpi1Text?: string | null;
+  kpi2Text?: string | null;
 };
 
 export default function MyOffersPage() {
@@ -26,10 +33,10 @@ export default function MyOffersPage() {
   const [rows, setRows] = useState<MyOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const [subId, setSubId] = useState("");
-  const [link, setLink] = useState<string | null>(null);
+  const [subIdByOffer, setSubIdByOffer] = useState<Record<string, string>>({});
+  const [linkByOffer, setLinkByOffer] = useState<Record<string, string | null>>({});
   const [buildingFor, setBuildingFor] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,7 +46,8 @@ export default function MyOffersPage() {
         setLoading(true);
         const res = await fetch("/api/offers/mine", { cache: "no-store" });
         const data = await res.json();
-        if (alive) setRows(Array.isArray(data) ? data : data.items ?? []);
+        if (!alive) return;
+        setRows(Array.isArray(data) ? data : data.items ?? []);
       } finally {
         if (alive) setLoading(false);
       }
@@ -53,7 +61,9 @@ export default function MyOffersPage() {
     const s = q.trim().toLowerCase();
     if (!s) return rows;
     return rows.filter((r) =>
-      `${r.title} ${r.geo} ${r.vertical}`.toLowerCase().includes(s)
+      `${r.title} ${r.tag ?? ""} ${r.geo} ${r.vertical} ${r.kpi1Text ?? ""} ${r.kpi2Text ?? ""} ${r.rules ?? ""} ${r.notes ?? ""}`
+        .toLowerCase()
+        .includes(s)
     );
   }, [rows, q]);
 
@@ -63,13 +73,22 @@ export default function MyOffersPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ offerId }),
     });
+
     const j = await r.json().catch(() => ({}));
+
     if (r.ok && j?.ok) {
       setRows((s) => s.filter((x) => x.id !== offerId));
-      if (expanded === offerId) {
-        setExpanded(null);
-        setLink(null);
-      }
+      setLinkByOffer((prev) => {
+        const next = { ...prev };
+        delete next[offerId];
+        return next;
+      });
+      setSubIdByOffer((prev) => {
+        const next = { ...prev };
+        delete next[offerId];
+        return next;
+      });
+      if (expandedId === offerId) setExpandedId(null);
     } else {
       alert(j?.error ?? "Failed");
     }
@@ -78,14 +97,13 @@ export default function MyOffersPage() {
   async function buildLink(offerId: string) {
     try {
       setBuildingFor(offerId);
-      setLink(null);
 
       const r = await fetch("/api/offers/link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           offerId,
-          subId: subId.trim() || null,
+          subId: subIdByOffer[offerId]?.trim() || null,
         }),
       });
 
@@ -94,7 +112,7 @@ export default function MyOffersPage() {
         throw new Error(j?.error || "Failed to build link");
       }
 
-      setLink(j.link);
+      setLinkByOffer((prev) => ({ ...prev, [offerId]: j.link }));
     } catch (e: any) {
       alert(e?.message || "Failed to build link");
     } finally {
@@ -102,8 +120,10 @@ export default function MyOffersPage() {
     }
   }
 
-  async function copyLink() {
+  async function copyLink(offerId: string) {
+    const link = linkByOffer[offerId];
     if (!link) return;
+
     try {
       await navigator.clipboard.writeText(link);
     } catch {
@@ -111,196 +131,308 @@ export default function MyOffersPage() {
     }
   }
 
+  function toggleExpand(id: string) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
+
   const fmtMoney = (n?: number | null) =>
     n == null ? "—" : `$${Number(n).toFixed(2)}`;
 
+  const renderKpi = (textValue?: string | null, numValue?: any) => {
+    if (textValue && String(textValue).trim()) return textValue;
+    if (numValue !== null && numValue !== undefined && String(numValue) !== "") {
+      return String(numValue);
+    }
+    return "—";
+  };
+
   return (
-    <section className="w-full mx-auto px-4 py-8 space-y-6 text-white/90">
+    <section className="relative mx-auto max-w-7xl px-4 py-8 space-y-6 text-white/90">
       <div className="flex items-center gap-2">
         <button
           onClick={() => setMenuOpen(true)}
           aria-label="Open navigation"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/20 border border-white/40"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15 border border-white/25 backdrop-blur-md"
         >
-          <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/80" aria-hidden>
+          <svg viewBox="0 0 24 24" className="w-5 h-5 text-white/90" aria-hidden>
             <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
           </svg>
         </button>
-        <span className="font-semibold text-white">Estrella</span>
+        <span className="font-semibold text-white text-lg">Estrella</span>
       </div>
 
-      <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">My offers</h1>
+      <div className="space-y-3">
+        <h1 className="text-5xl font-extrabold tracking-tight">My offers</h1>
+        <p className="max-w-3xl text-white/60 text-sm md:text-base">
+          Здесь собраны все офферы, к которым у тебя уже есть доступ. Разворачивай карточку, смотри условия и сразу строй tracking link.
+        </p>
+      </div>
 
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search my offers"
-            className="w-full rounded-xl px-10 py-3 outline-none bg-zinc-900 text-white placeholder:text-white/50 border border-white/15 backdrop-blur-xl focus:ring-2 focus:ring-white/20"
-          />
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/60">🔎</span>
+      <div className="relative">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search my offers by title, GEO, vertical, KPI, rules…"
+          className="w-full rounded-3xl px-12 py-4 outline-none bg-white/5 text-white placeholder:text-white/40 border border-white/10 backdrop-blur-2xl focus:ring-2 focus:ring-white/15"
+        />
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/50 text-lg">
+          🔎
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/60 backdrop-blur-xl">
+          Loading…
         </div>
-      </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/60 backdrop-blur-xl">
+          No approved offers yet
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          {filtered.map((r) => {
+            const expanded = expandedId === r.id;
+            const isBuilding = buildingFor === r.id;
+            const currentLink = linkByOffer[r.id] ?? null;
+            const currentSubId = subIdByOffer[r.id] ?? "";
 
-      <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
-        <table className="w-full min-w-[900px] text-sm">
-          <thead className="text-white/70">
-            <tr className="text-left">
-              <Th>Offer</Th>
-              <Th>CPA</Th>
-              <Th>Cap</Th>
-              <Th>GEO</Th>
-              <Th>Vertical</Th>
-              <Th>Mode</Th>
-              <Th>Action</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={7} className="p-6 text-white/60">Loading…</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={7} className="p-6 text-white/60">No approved offers yet</td></tr>
-            ) : (
-              filtered.map((r) => {
-                const isOpen = expanded === r.id;
-                const isBuilding = buildingFor === r.id;
+            return (
+              <article
+                key={r.id}
+                className="overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.06] shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-2xl"
+              >
+                <div className="p-5 md:p-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="truncate text-2xl font-bold text-white">{r.title}</h2>
+                          <StatusBadge tone="green">Approved</StatusBadge>
+                          <StatusBadge tone="default">Tier {r.tier}</StatusBadge>
+                          <StatusBadge tone={r.mode === "Auto" ? "blue" : "default"}>
+                            {r.mode}
+                          </StatusBadge>
+                        </div>
 
-                return (
-                  <>
-                    <tr key={r.id} className="border-t border-white/10">
-                      <Td className="font-medium">
-                        <button
-                          onClick={() => {
-                            setExpanded(isOpen ? null : r.id);
-                            setLink(null);
-                          }}
-                          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 mr-2"
-                          title={isOpen ? "Hide details" : "Show details"}
-                        >
-                          {isOpen ? "−" : "+"}
-                        </button>
-                        {r.title}
-                      </Td>
-                      <Td>{r.cpa != null ? `$${Number(r.cpa).toFixed(2)}` : "—"}</Td>
-                      <Td>{r.cap ?? "—"}</Td>
-                      <Td>{r.geo}</Td>
-                      <Td>{r.vertical}</Td>
-                      <Td><Badge tone={r.mode === "Auto" ? "blue" : "default"}>{r.mode}</Badge></Td>
-                      <Td>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-white/65">
+                          <span>{r.geo}</span>
+                          <span>•</span>
+                          <span>{r.vertical}</span>
+                          {r.tag ? (
+                            <>
+                              <span>•</span>
+                              <span>#{r.tag}</span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
                         <button
                           onClick={() => complete(r.id)}
-                          className="rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 hover:bg-white/15"
+                          className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15 transition"
                           title="Скрыть из «Мои офферы»"
                         >
                           Завершить
                         </button>
-                      </Td>
-                    </tr>
+                      </div>
+                    </div>
 
-                    {isOpen && (
-                      <tr className="bg-white/3">
-                        <td colSpan={7} className="px-4 py-3 border-t border-white/10">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                              <div className="text-white/60 text-xs">GEO / Vertical</div>
-                              <div className="mt-1 font-medium">
-                                {r.geo} • {r.vertical}
-                              </div>
-                              {r.cap != null && (
-                                <div className="mt-3">
-                                  <div className="text-white/60 text-xs">Cap</div>
-                                  <div className="font-medium">{r.cap}</div>
-                                </div>
-                              )}
-                              {r.minDeposit != null && (
-                                <div className="mt-3">
-                                  <div className="text-white/60 text-xs">Min. Deposit</div>
-                                  <div className="font-medium">{fmtMoney(r.minDeposit)}</div>
-                                </div>
-                              )}
-                              {r.holdDays != null && (
-                                <div className="mt-3">
-                                  <div className="text-white/60 text-xs">Hold (days)</div>
-                                  <div className="font-medium">{r.holdDays}</div>
-                                </div>
-                              )}
-                            </div>
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                      <MiniStat label="CPA / FTD" value={fmtMoney(r.cpa)} />
+                      <MiniStat label="Cap" value={r.cap ?? "—"} />
+                      <MiniStat label="Min deposit" value={fmtMoney(r.minDeposit)} />
+                      <MiniStat label="Hold" value={r.holdDays != null ? `${r.holdDays} d` : "—"} />
+                    </div>
 
-                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                              <div className="text-white/60 text-xs">Target URL</div>
-                              <div className="mt-1 truncate text-sm">{r.targetUrl ?? "—"}</div>
-                            </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <InfoBox title="KPI 1" value={renderKpi(r.kpi1Text, r.kpi1)} />
+                      <InfoBox title="KPI 2" value={renderKpi(r.kpi2Text, r.kpi2)} />
+                    </div>
 
-                            <div className="rounded-xl border border-white/10 bg-black/20 p-3">
-                              <div className="text-white/60 text-xs mb-1">Tracking Link</div>
-                              <div className="flex gap-2">
-                                <input
-                                  placeholder="subId (optional)"
-                                  value={subId}
-                                  onChange={(e) => setSubId(e.target.value)}
-                                  className="flex-1 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm outline-none"
-                                />
-                                <button
-                                  onClick={() => buildLink(r.id)}
-                                  disabled={isBuilding}
-                                  className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
-                                >
-                                  {isBuilding ? "Building…" : "Build link"}
-                                </button>
-                                <button
-                                  onClick={copyLink}
-                                  disabled={!link}
-                                  className="rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 disabled:opacity-60"
-                                  title="Copy"
-                                >
-                                  Copy
-                                </button>
-                              </div>
-                              {link && (
-                                <div className="mt-2 break-all rounded-lg border border-white/10 bg-black/30 p-2 text-xs">
-                                  {link}
-                                </div>
-                              )}
-                            </div>
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      <button
+                        onClick={() => toggleExpand(r.id)}
+                        className="rounded-2xl border border-white/15 bg-white/8 px-4 py-2 text-sm text-white/90 hover:bg-white/12 transition"
+                      >
+                        {expanded ? "Скрыть детали" : "Подробнее"}
+                      </button>
 
-                            {r.rules && (
-                              <div className="md:col-span-3 rounded-xl border border-white/10 bg-black/20 p-3">
-                                <div className="text-white/60 text-xs">Rules</div>
-                                <div className="mt-1 whitespace-pre-wrap text-sm leading-6">{r.rules}</div>
-                              </div>
-                            )}
+                      <span className="text-xs text-white/45">
+                        Внутри: правила, заметки и генерация tracking link
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {expanded && (
+                  <div className="border-t border-white/10 bg-black/10 px-5 pb-5 pt-5 md:px-6 md:pb-6">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <DetailCard
+                        title="Основные условия"
+                        rows={[
+                          ["CPA / FTD", fmtMoney(r.cpa)],
+                          ["Tier", `Tier ${r.tier}`],
+                          ["Mode", r.mode],
+                          ["Cap", r.cap ?? "—"],
+                          ["Min deposit", fmtMoney(r.minDeposit)],
+                          ["Hold days", r.holdDays != null ? `${r.holdDays}` : "—"],
+                        ]}
+                      />
+
+                      <DetailCard
+                        title="KPI / требования"
+                        rows={[
+                          ["KPI 1", renderKpi(r.kpi1Text, r.kpi1)],
+                          ["KPI 2", renderKpi(r.kpi2Text, r.kpi2)],
+                        ]}
+                      />
+
+                      <TextCard
+                        title="Rules"
+                        text={r.rules ?? "Пока не заполнено."}
+                      />
+
+                      <TextCard
+                        title="Notes"
+                        text={r.notes ?? "Пока не заполнено."}
+                      />
+
+                      <div className="md:col-span-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                        <div className="text-sm font-semibold text-white">Tracking link</div>
+
+                        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_auto]">
+                          <input
+                            placeholder="subId (optional)"
+                            value={currentSubId}
+                            onChange={(e) =>
+                              setSubIdByOffer((prev) => ({
+                                ...prev,
+                                [r.id]: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/15"
+                          />
+
+                          <button
+                            onClick={() => buildLink(r.id)}
+                            disabled={isBuilding}
+                            className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-60"
+                          >
+                            {isBuilding ? "Building…" : "Build link"}
+                          </button>
+
+                          <button
+                            onClick={() => copyLink(r.id)}
+                            disabled={!currentLink}
+                            className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-medium text-white hover:bg-white/15 disabled:opacity-60"
+                          >
+                            Copy
+                          </button>
+                        </div>
+
+                        {currentLink && (
+                          <div className="mt-4 break-all rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-white/85">
+                            {currentLink}
                           </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                        )}
+
+                        <div className="mt-3 text-xs text-white/45">
+                          Сгенерированная ссылка уже готова для запуска трафика.
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                        <div className="text-sm font-semibold text-white">Target URL</div>
+                        <div className="mt-3 break-all text-sm text-white/75">
+                          {r.targetUrl ?? "—"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
 
       <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} />
     </section>
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-3 font-semibold whitespace-nowrap">{children}</th>;
+function MiniStat({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/15 px-4 py-3">
+      <div className="text-xs uppercase tracking-wide text-white/45">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-white">{value}</div>
+    </div>
+  );
 }
-function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 whitespace-nowrap ${className ?? ""}`}>{children}</td>;
+
+function InfoBox({ title, value }: { title: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/15 px-4 py-3">
+      <div className="text-sm text-white/55">{title}</div>
+      <div className="mt-1 text-sm leading-6 text-white/90">{value}</div>
+    </div>
+  );
 }
-function Badge({
-  children, tone = "default",
-}: { children: React.ReactNode; tone?: "default" | "green" | "blue" | "orange" }) {
+
+function DetailCard({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: Array<[string, React.ReactNode]>;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <div className="text-sm font-semibold text-white">{title}</div>
+      <div className="mt-3 space-y-2">
+        {rows.map(([label, value]) => (
+          <div
+            key={label}
+            className="flex items-start justify-between gap-3 border-b border-white/5 pb-2 last:border-b-0 last:pb-0"
+          >
+            <div className="text-sm text-white/50">{label}</div>
+            <div className="text-right text-sm text-white/90">{value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TextCard({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <div className="text-sm font-semibold text-white">{title}</div>
+      <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-white/78">
+        {text}
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({
+  children,
+  tone = "default",
+}: {
+  children: React.ReactNode;
+  tone?: "default" | "green" | "blue" | "orange";
+}) {
   const map: Record<string, string> = {
-    default: "bg-white/10 border-white/20 text-white/80",
-    green: "bg-emerald-400/15 border-emerald-400/30 text-emerald-200",
-    blue: "bg-sky-400/15 border-sky-400/30 text-sky-200",
-    orange: "bg-amber-400/15 border-amber-400/30 text-amber-200",
+    default: "bg-white/10 border-white/15 text-white/85",
+    green: "bg-emerald-400/15 border-emerald-400/25 text-emerald-200",
+    blue: "bg-sky-400/15 border-sky-400/25 text-sky-200",
+    orange: "bg-amber-400/15 border-amber-400/25 text-amber-200",
   };
-  return <span className={`inline-flex items-center rounded-lg px-2 py-1 text-xs border ${map[tone]}`}>{children}</span>;
+
+  return (
+    <span className={`inline-flex items-center rounded-xl border px-3 py-1 text-xs font-medium ${map[tone]}`}>
+      {children}
+    </span>
+  );
 }
