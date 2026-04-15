@@ -318,12 +318,12 @@ export async function GET(req: Request) {
       return bad(normalized.error, normalized.code || 400);
     }
 
-    const result = await processNormalized(normalized);
-    if ("error" in result) {
-      return bad(result.error, result.code || 400);
-    }
+   const result = await processNormalized(normalized);
+if ("error" in result) {
+  return bad(String(result.error), result.code ?? 400);
+}
 
-    return ok(result);
+return ok(result);
   } catch (e: any) {
     return bad(e?.message || "UNIVERSAL_POSTBACK_FAILED", 500);
   }
