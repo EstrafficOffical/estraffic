@@ -66,6 +66,15 @@ export default function OffersTable({
                     id={r.id}
                     title={r.title}
                     hidden={r.hidden}
+                    geo={r.geo}
+                    vertical={r.vertical}
+                    tier={r.tier}
+                    cpa={r.cpa}
+                    cap={r.cap}
+                    mode={r.mode}
+                    minDeposit={r.minDeposit}
+                    holdDays={r.holdDays}
+                    onRowPatched={(patch) => onRowChanged(r.id, patch)}
                     onToggledHidden={(next) => onRowChanged(r.id, { hidden: next })}
                     onArchived={() => onRowChanged(r.id, { hidden: true })}
                     onDeleted={() => onRowRemoved(r.id)}
