@@ -156,7 +156,13 @@ export default async function Page({
                 <td className="px-3 py-2 whitespace-nowrap">{u.role}</td>
                 <td className="px-3 py-2 whitespace-nowrap">{u.status}</td>
                 <td className="px-3 py-2 whitespace-nowrap">
-                  <RowActions id={u.id} meId={meId} role={u.role as any} status={u.status as any} />
+                  <RowActions
+                    id={u.id}
+                    meId={meId}
+                    role={u.role as any}
+                    status={u.status as any}
+                    tier={u.tier}
+                  />
                 </td>
               </tr>
             ))}
