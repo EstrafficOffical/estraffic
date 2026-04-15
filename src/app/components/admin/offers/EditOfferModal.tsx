@@ -163,11 +163,12 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
         onClick={() => !saving && onClose()}
       />
 
-      <div className="fixed inset-0 z-[71] flex items-center justify-center p-4">
-        <form
-          onSubmit={submit}
-          className="w-full max-w-4xl rounded-3xl border border-white/15 bg-zinc-950/95 p-5 text-white shadow-[0_20px_80px_rgba(0,0,0,.55)]"
-        >
+      <div className="fixed inset-0 z-[71] overflow-y-auto p-4">
+  <div className="flex min-h-full items-center justify-center">
+    <form
+      onSubmit={submit}
+      className="my-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl border border-white/15 bg-zinc-950/95 p-5 text-white shadow-[0_20px_80px_rgba(0,0,0,.55)]"
+    >
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold">Редактировать оффер</h2>
@@ -368,8 +369,9 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
               Отмена
             </button>
           </div>
-        </form>
+         </form>
       </div>
+    </div>
     </>
   );
 }
