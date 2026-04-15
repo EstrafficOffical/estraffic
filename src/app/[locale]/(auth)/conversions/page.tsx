@@ -126,7 +126,7 @@ export default function ConversionsPage() {
     });
     if (test.secret) params.set("secret", test.secret);
 
-    const url = "/api/postbacks/ingest?" + params.toString();
+    const url = "/api/postbacks/universal?source=ingest&" + params.toString();
     try {
       const res = await fetch(url);
       const data = await res.json();

@@ -27,10 +27,10 @@ export default function PostbacksClient({ locale }: { locale: string }) {
     };
   }, []);
 
-  const devUrl = "http://localhost:3000/api/postbacks/ingest";
+  const devUrl = "http://localhost:3000/api/postbacks/universal?source=ingest";
   const prodUrl = useMemo(() => {
     if (typeof window === "undefined") return "https://<домен>/api/postbacks/ingest";
-    return `${window.location.origin}/api/postbacks/ingest`;
+    return `${window.location.origin}/api/postbacks/universal?source=ingest`;
   }, []);
 
   const copy = async (txt: string) => {
