@@ -10,13 +10,22 @@ datasource db {
 
 enum Role {
   USER
+  MANAGER
   ADMIN
+  OWNER
 }
 
 enum UserStatus {
   PENDING
   APPROVED
+  SUSPENDED
   BANNED
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum OfferMode {
@@ -53,17 +62,23 @@ enum ConversionType {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  name         String?
-  passwordHash String
-  image        String?
-  role         Role       @default(USER)
-  status       UserStatus @default(PENDING)
-  tier         Int        @default(3)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  telegram     String?    @db.VarChar(191)
+  id                String     @id @default(cuid())
+  email             String     @unique
+  name              String?
+  passwordHash      String
+  image             String?
+  role              Role       @default(USER)
+  status            UserStatus @default(PENDING)
+  tier              Int        @default(3)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  telegram          String?    @db.VarChar(191)
+  assignedManagerId String?
+
+  assignedManager      User?                  @relation("AffiliateManager", fields: [assignedManagerId], references: [id], onDelete: SetNull)
+  managedAffiliates    User[]                 @relation("AffiliateManager")
+  application          AffiliateApplication?  @relation("ApplicantApplication")
+  reviewedApplications AffiliateApplication[] @relation("ApplicationReviewer")
 
   wallets       Wallet[]
   payouts       Payout[]
@@ -79,6 +94,31 @@ model User {
   @@index([tier])
   @@index([createdAt])
   @@index([telegram])
+  @@index([assignedManagerId])
+}
+
+model AffiliateApplication {
+  id                     String            @id @default(cuid())
+  userId                 String            @unique
+  status                 ApplicationStatus @default(PENDING)
+  company                String?           @db.VarChar(191)
+  trafficSources         String[]
+  mainGeos               String[]
+  verticalInterests      String[]
+  experience             String?           @db.Text
+  estimatedMonthlyVolume String?           @db.VarChar(191)
+  about                  String?           @db.Text
+  reviewedAt             DateTime?
+  reviewedById           String?
+  rejectionReason        String?           @db.Text
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  user       User  @relation("ApplicantApplication", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("ApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([reviewedById])
 }
 
 model Account {
@@ -118,39 +158,39 @@ model VerificationToken {
 }
 
 model Offer {
-  id        String      @id @default(cuid())
-  title     String
-  tag       String?
-  cpa       Decimal?    @db.Decimal(12, 2)
-  geo       String
-  vertical  String
-  tier      Int         @default(3)
+  id       String   @id @default(cuid())
+  title    String
+  tag      String?
+  cpa      Decimal? @db.Decimal(12, 2)
+  geo      String
+  vertical String
+  tier     Int      @default(3)
 
   // legacy числовые KPI — можно не использовать
-  kpi1      Float?
+  kpi1 Float?
 
-  kpi2      Float?
+  kpi2 Float?
 
   // НОВОЕ: текстовые KPI
-  kpi1Text  String?     @db.Text
-  kpi2Text  String?     @db.Text
+  kpi1Text String? @db.Text
+  kpi2Text String? @db.Text
 
-  mode      OfferMode   @default(Auto)
-  status    OfferStatus @default(ACTIVE)
-  targetUrl String?     @db.Text
-  hidden    Boolean     @default(false)
-  trackingTemplate String? @db.Text
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  mode             OfferMode   @default(Auto)
+  status           OfferStatus @default(ACTIVE)
+  targetUrl        String?     @db.Text
+  hidden           Boolean     @default(false)
+  trackingTemplate String?     @db.Text
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   // Единая капа
-  cap       Int?
+  cap Int?
 
   // Доп. инфо (legacy)
-  minDeposit  Decimal?   @db.Decimal(12, 2)
-  holdDays    Int?
-  rules       String?    @db.Text
-  notes       String?    @db.Text
+  minDeposit Decimal? @db.Decimal(12, 2)
+  holdDays   Int?
+  rules      String?  @db.Text
+  notes      String?  @db.Text
 
   accesses    OfferAccess[]
   requests    OfferRequest[]
@@ -236,7 +276,7 @@ model Conversion {
   createdAt DateTime       @default(now())
 
   // --- НОВОЕ: безопасные доп. поля под FavBet ---
-  externalId String?  @unique
+  externalId String? @unique
   status     String?
   source     String?
   clickId    String?
