@@ -10,8 +10,8 @@ const leagueSpartan = League_Spartan({
 
 // метаданные приложения
 export const metadata = {
-  title: "Estrella",
-  description: "Affiliate platform",
+  title: "NEXUS ALLIANCE",
+  description: "Private performance partnership network",
   icons: {
     icon: [{ url: "/icon.png" }],
     apple: [{ url: "/apple-icon.png" }],

@@ -43,3 +43,14 @@ body {
 button:focus {
   outline: none;
 }
+
+
+/* NEXUS ALLIANCE public landing backdrop */
+.nexus-grid {
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.025) 1px, transparent 1px);
+  background-size: 72px 72px;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 72%);
+  mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 72%);
+}
