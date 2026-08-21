@@ -1,63 +1,299 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { EmptyState, PageHeader, Panel, Pill } from "@/app/components/NexusPageKit";
 
-type OfferRow = {
-  id: string; title: string; tag?: string | null; cpa: number | null; cap: number | null;
-  minDeposit?: number | null; holdDays?: number | null; geo: string; vertical: string; tier: number;
-  rules?: string | null; notes?: string | null; kpi1?: unknown; kpi2?: unknown;
-  kpi1Text?: string | null; kpi2Text?: string | null; mode: "Auto" | "Manual";
-  displayStatus: "AVAILABLE" | "REQUESTED" | "IN_PROGRESS";
+type OfferFlow = {
+  id: string;
+  brand: string;
+  vertical: string;
+  geo: string;
+  marketName: string | null;
+  name: string;
+  trafficSource: string;
+  approach: string | null;
+  tier: number;
+  accessMode: "OPEN" | "APPROVAL_REQUIRED" | "PRIVATE";
+  affiliateCpa: string | null;
+  currency: string;
+  capFtd: number | null;
+  minDeposit: string | null;
+  validationTiming: string | null;
+  fraudHoldDays: number | null;
+  accessStatus: "NONE" | "PENDING" | "APPROVED" | "REJECTED" | "REVOKED";
 };
 
+type Payload = {
+  role: "USER" | "MANAGER" | "ADMIN" | "OWNER";
+  tier: number;
+  flows: OfferFlow[];
+};
+
+const input =
+  "h-11 rounded-xl border border-white/10 bg-[#090b10] px-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-[#7357ff]/60";
+const card = "rounded-2xl border border-white/10 bg-[#0d0f14]";
+
+function money(value: string | null, currency: string) {
+  if (!value) return "-";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(number);
+}
+
+function accessLabel(flow: OfferFlow) {
+  if (flow.accessStatus === "APPROVED") return "Approved";
+  if (flow.accessStatus === "PENDING") return "Pending review";
+  if (flow.accessStatus === "REJECTED") return "Request again";
+  if (flow.accessStatus === "REVOKED") return "Request again";
+  if (flow.accessMode === "OPEN") return "Activate flow";
+  return "Request access";
+}
+
 export default function OffersPage() {
-  const [rows, setRows] = useState<OfferRow[]>([]);
+  const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
-  const [vertical, setVertical] = useState("All");
-  const [geo, setGeo] = useState("All");
-  const [working, setWorking] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [geo, setGeo] = useState("ALL");
+  const [vertical, setVertical] = useState("ALL");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    const response = await fetch("/api/nexus/affiliate/offers", { cache: "no-store" });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(json?.error || "Failed to load offers");
+      setLoading(false);
+      return;
+    }
+    setData(json);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    fetch("/api/offers/list", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((j) => setRows(Array.isArray(j?.items) ? j.items : []))
-      .finally(() => setLoading(false));
+    void load();
   }, []);
 
-  const verticals = useMemo(() => ["All", ...Array.from(new Set(rows.map((r) => r.vertical))).sort()], [rows]);
-  const geos = useMemo(() => ["All", ...Array.from(new Set(rows.map((r) => r.geo))).sort()], [rows]);
-  const filtered = useMemo(() => rows.filter((r) => {
-    const hay = `${r.title} ${r.tag ?? ""} ${r.geo} ${r.vertical}`.toLowerCase();
-    return (!q || hay.includes(q.toLowerCase())) && (vertical === "All" || r.vertical === vertical) && (geo === "All" || r.geo === geo);
-  }), [rows, q, vertical, geo]);
+  const geos = useMemo(
+    () => Array.from(new Set((data?.flows ?? []).map((flow) => flow.geo))).sort(),
+    [data],
+  );
 
-  async function requestOffer(id: string) {
-    setWorking(id);
-    try {
-      const res = await fetch("/api/offers/requests", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ offerId: id }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) return alert(data?.error ?? "Unable to request access");
-      setRows((prev) => prev.map((r) => r.id === id ? { ...r, displayStatus: data.status === "IN_PROGRESS" ? "IN_PROGRESS" : "REQUESTED" } : r));
-    } finally { setWorking(null); }
+  const verticals = useMemo(
+    () => Array.from(new Set((data?.flows ?? []).map((flow) => flow.vertical))).sort(),
+    [data],
+  );
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (data?.flows ?? []).filter((flow) => {
+      if (geo !== "ALL" && flow.geo !== geo) return false;
+      if (vertical !== "ALL" && flow.vertical !== vertical) return false;
+      if (!query) return true;
+      return [
+        flow.brand,
+        flow.vertical,
+        flow.geo,
+        flow.name,
+        flow.trafficSource,
+        flow.approach ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [data, search, geo, vertical]);
+
+  async function requestAccess(flow: OfferFlow) {
+    if (data?.role !== "USER") return;
+    setBusyId(flow.id);
+    setError("");
+
+    const response = await fetch("/api/nexus/affiliate/offers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flowId: flow.id }),
+    });
+    const json = await response.json().catch(() => ({}));
+    setBusyId(null);
+
+    if (!response.ok) {
+      setError(json?.error || "Could not request access");
+      return;
+    }
+
+    await load();
   }
 
   return (
-    <div className="pb-10">
-      <PageHeader eyebrow="Workspace" title="Offers" subtitle="Live offer catalog filtered by your tier. Internal advertiser economics stay hidden." />
-      <div className="space-y-5 p-5 md:p-8">
-        <Panel className="p-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_180px_160px]">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search offers, GEO or vertical" className="h-10 rounded-lg border border-white/[0.08] bg-black/20 px-3 text-[13px] text-white outline-none placeholder:text-white/25 focus:border-[#7657ff]/40" />
-            <select value={vertical} onChange={(e) => setVertical(e.target.value)} className="h-10 rounded-lg border border-white/[0.08] bg-[#101014] px-3 text-[13px] text-white/70 outline-none">{verticals.map((v) => <option key={v}>{v}</option>)}</select>
-            <select value={geo} onChange={(e) => setGeo(e.target.value)} className="h-10 rounded-lg border border-white/[0.08] bg-[#101014] px-3 text-[13px] text-white/70 outline-none">{geos.map((v) => <option key={v}>{v}</option>)}</select>
+    <div className="min-h-screen bg-[#08090d] text-white">
+      <div className="mx-auto w-full max-w-[1500px] px-6 py-10 lg:px-10">
+        <div className="mb-8">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-[#8068ff]">
+            Workspace
           </div>
-        </Panel>
+          <h1 className="text-4xl font-semibold tracking-[-0.04em]">Offers</h1>
+          <p className="mt-3 text-sm text-white/45">
+            Live NEXUS flow catalog filtered by your tier. Internal advertiser economics stay hidden.
+          </p>
+        </div>
 
-        {loading ? <Panel><EmptyState title="Loading live catalog…" /></Panel> : filtered.length === 0 ? <Panel><EmptyState title="No offers match your filters" description="When staff publishes tier-visible offers, they will appear here automatically." /></Panel> : (
+        {data && data.role !== "USER" && (
+          <div className="mb-5 rounded-2xl border border-[#7357ff]/20 bg-[#7357ff]/[0.06] px-4 py-3 text-sm text-white/60">
+            Staff preview: you can inspect the affiliate catalog here, but access actions are disabled for staff accounts.
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-5 rounded-2xl border border-red-500/25 bg-red-500/[0.08] px-4 py-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className={`${card} mb-6 grid gap-3 p-4 lg:grid-cols-[1fr_210px_210px]`}>
+          <input
+            className={input}
+            placeholder="Search brand, GEO, vertical, flow..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <select className={input} value={geo} onChange={(event) => setGeo(event.target.value)}>
+            <option value="ALL">All GEOs</option>
+            {geos.map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+          <select className={input} value={vertical} onChange={(event) => setVertical(event.target.value)}>
+            <option value="ALL">All verticals</option>
+            {verticals.map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+        </div>
+
+        {loading ? (
+          <div className={`${card} flex min-h-72 items-center justify-center text-sm text-white/40`}>
+            Loading live NEXUS offers...
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className={`${card} flex min-h-72 flex-col items-center justify-center px-6 text-center`}>
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-[#7357ff]/25 bg-[#7357ff]/10 text-[#8c77ff]">
+              N
+            </div>
+            <div className="text-lg font-semibold">No offers match your filters</div>
+            <div className="mt-2 max-w-lg text-sm leading-6 text-white/40">
+              Active visible flows for your tier will appear here automatically.
+            </div>
+          </div>
+        ) : (
           <div className="grid gap-4 xl:grid-cols-2">
-            {filtered.map((r) => <OfferCard key={r.id} row={r} busy={working === r.id} onRequest={() => requestOffer(r.id)} />)}
+            {filtered.map((flow) => {
+              const approved = flow.accessStatus === "APPROVED";
+              const pending = flow.accessStatus === "PENDING";
+              const staffPreview = data?.role !== "USER";
+
+              return (
+                <article key={flow.id} className={`${card} overflow-hidden`}>
+                  <div className="border-b border-white/8 p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-xl font-semibold">{flow.brand}</h2>
+                          <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                            {flow.geo}
+                          </span>
+                          <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                            Tier {flow.tier}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-sm font-medium text-white/75">{flow.name}</div>
+                        <div className="mt-1 text-xs text-white/35">
+                          {flow.trafficSource}{flow.approach ? ` / ${flow.approach}` : ""} / {flow.vertical}
+                        </div>
+                      </div>
+
+                      <div
+                        className={[
+                          "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                          approved
+                            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+                            : pending
+                              ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
+                              : "border-white/10 bg-white/[0.03] text-white/45",
+                        ].join(" ")}
+                      >
+                        {approved ? "Approved" : pending ? "Pending" : flow.accessMode.replaceAll("_", " ")}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-px bg-white/[0.06] sm:grid-cols-4">
+                    <Metric label="Affiliate CPA" value={money(flow.affiliateCpa, flow.currency)} />
+                    <Metric label="Cap FTD" value={flow.capFtd == null ? "-" : String(flow.capFtd)} />
+                    <Metric label="Min deposit" value={money(flow.minDeposit, flow.currency)} />
+                    <Metric label="Access" value={flow.accessMode.replaceAll("_", " ")} />
+                  </div>
+
+                  {(flow.validationTiming || flow.fraudHoldDays != null) && (
+                    <div className="border-t border-white/8 px-5 py-4 text-xs leading-6 text-white/40">
+                      {flow.validationTiming && <span>Validation: {flow.validationTiming}</span>}
+                      {flow.validationTiming && flow.fraudHoldDays != null && <span> / </span>}
+                      {flow.fraudHoldDays != null && <span>Fraud hold: {flow.fraudHoldDays} days</span>}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-3 border-t border-white/8 px-5 py-4">
+                    <div className="text-xs text-white/30">
+                      {approved
+                        ? "This flow is available in My Offers."
+                        : pending
+                          ? "Your request is waiting for staff review."
+                          : flow.accessMode === "OPEN"
+                            ? "Open flow can be activated instantly."
+                            : "Approval is required before tracking access is granted."}
+                    </div>
+
+                    {staffPreview ? (
+                      <button
+                        disabled
+                        className="h-10 rounded-xl border border-white/10 px-4 text-sm font-semibold text-white/25"
+                      >
+                        Staff preview
+                      </button>
+                    ) : approved ? (
+                      <button
+                        className="h-10 rounded-xl border border-[#7357ff]/30 bg-[#7357ff]/10 px-4 text-sm font-semibold text-[#a291ff]"
+                        onClick={() => {
+                          window.location.href = "./offers/mine";
+                        }}
+                      >
+                        Open My Offers
+                      </button>
+                    ) : pending ? (
+                      <button
+                        disabled
+                        className="h-10 rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 text-sm font-semibold text-amber-300/70"
+                      >
+                        Pending review
+                      </button>
+                    ) : (
+                      <button
+                        disabled={busyId === flow.id}
+                        className="h-10 rounded-xl bg-[#7357ff] px-4 text-sm font-semibold text-white transition hover:bg-[#826cff] disabled:opacity-40"
+                        onClick={() => void requestAccess(flow)}
+                      >
+                        {busyId === flow.id ? "Saving..." : accessLabel(flow)}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </div>
@@ -65,30 +301,11 @@ export default function OffersPage() {
   );
 }
 
-function OfferCard({ row: r, busy, onRequest }: { row: OfferRow; busy: boolean; onRequest: () => void }) {
-  const statusTone = r.displayStatus === "IN_PROGRESS" ? "success" : r.displayStatus === "REQUESTED" ? "warning" : "accent";
-  const statusLabel = r.displayStatus === "IN_PROGRESS" ? "Approved" : r.displayStatus === "REQUESTED" ? "Pending" : "Available";
-  const fmt = (n?: number | null) => n == null ? "—" : `$${Number(n).toFixed(2)}`;
-  const kpi = (t?: string | null, n?: unknown) => t?.trim() || (n == null ? "—" : String(n));
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <article className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-5 transition hover:border-white/[0.14]">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2"><h2 className="text-[16px] font-semibold text-white">{r.title}</h2><Pill tone={statusTone}>{statusLabel}</Pill></div>
-          <div className="mt-1.5 text-xs text-white/38">{r.vertical} · {r.geo}{r.tag ? ` · ${r.tag}` : ""}</div>
-        </div>
-        <Pill>Tier {r.tier}</Pill>
-      </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Mini label="CPA" value={fmt(r.cpa)} /><Mini label="Cap" value={r.cap ?? "—"} /><Mini label="Min deposit" value={fmt(r.minDeposit)} /><Mini label="Hold" value={r.holdDays == null ? "—" : `${r.holdDays}d`} />
-      </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2"><Info label="KPI 1" value={kpi(r.kpi1Text, r.kpi1)} /><Info label="KPI 2" value={kpi(r.kpi2Text, r.kpi2)} /></div>
-      <div className="mt-5 flex items-center justify-between border-t border-white/[0.07] pt-4">
-        <span className="text-[11px] text-white/32">{r.mode} access workflow</span>
-        {r.displayStatus === "AVAILABLE" ? <button disabled={busy} onClick={onRequest} className="rounded-lg bg-[#7657ff] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#826cff] disabled:opacity-50">{busy ? "Requesting…" : "Request access"}</button> : <span className="text-xs text-white/45">{r.displayStatus === "REQUESTED" ? "Awaiting review" : "Available in My Offers"}</span>}
-      </div>
-    </article>
+    <div className="bg-[#0b0d12] px-4 py-4">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30">{label}</div>
+      <div className="mt-2 text-sm font-semibold text-white/80">{value}</div>
+    </div>
   );
 }
-function Mini({ label, value }: { label: string; value: React.ReactNode }) { return <div className="rounded-lg border border-white/[0.07] bg-black/15 p-3"><div className="text-[9px] uppercase tracking-[0.13em] text-white/30">{label}</div><div className="mt-1.5 text-[14px] font-semibold text-white/85">{value}</div></div>; }
-function Info({ label, value }: { label: string; value: React.ReactNode }) { return <div className="rounded-lg border border-white/[0.07] bg-black/10 px-3 py-2.5"><div className="text-[9px] uppercase tracking-[0.13em] text-white/28">{label}</div><div className="mt-1 text-xs leading-5 text-white/55">{value}</div></div>; }
