@@ -150,7 +150,7 @@ async function handle(req: Request) {
     const source = normalizeSource(first(input, "source", "partner", "integration"));
     const type = mapType(first(input, "event", "type", "goal", "goal_id"));
     const status = mapStatus(first(input, "status", "state"));
-    const advertiserAmount = numeric(first(input, "amount", "payout", "revenue", "p1"));
+    const incomingAdvertiserAmount = numeric(first(input, "amount", "payout", "revenue", "p1"));
     const externalId = first(input, "external_id", "ext_id");
     const eventAt = parseEventAt(first(input, "event_at", "timestamp", "time", "ts"));
 
@@ -201,6 +201,7 @@ async function handle(req: Request) {
     }
 
     let affiliatePayout = 0;
+    let finalAdvertiserAmount = incomingAdvertiserAmount;
     let capReached = false;
 
     if (status === NexusConversionStatus.APPROVED && type === ConversionType.DEP) {
@@ -208,7 +209,12 @@ async function handle(req: Request) {
         existing?.status === NexusConversionStatus.APPROVED &&
         existing.type === ConversionType.DEP
       ) {
+        // Idempotent replay: preserve economics already stored for this tx.
         affiliatePayout = Number(existing.affiliatePayout || 0);
+        finalAdvertiserAmount =
+          existing.advertiserAmount == null
+            ? Number(click.advertiserCpaSnapshot || 0)
+            : Number(existing.advertiserAmount);
       } else {
         const approvedDeposits = await prisma.nexusConversion.count({
           where: {
@@ -226,7 +232,12 @@ async function handle(req: Request) {
         capReached = cap !== null && approvedDeposits >= cap;
 
         if (!capReached) {
+          // CPA economics are frozen on NexusClick and are the source of truth.
           affiliatePayout = Number(click.affiliateCpaSnapshot || 0);
+          finalAdvertiserAmount = Number(click.advertiserCpaSnapshot || 0);
+        } else {
+          affiliatePayout = 0;
+          finalAdvertiserAmount = 0;
         }
       }
     }
@@ -237,6 +248,7 @@ async function handle(req: Request) {
       status === NexusConversionStatus.PENDING
     ) {
       affiliatePayout = 0;
+      finalAdvertiserAmount = 0;
     }
 
     const currency =
@@ -269,7 +281,7 @@ async function handle(req: Request) {
         source,
         txId,
         externalId,
-        advertiserAmount: advertiserAmount ?? undefined,
+        advertiserAmount: finalAdvertiserAmount ?? undefined,
         affiliatePayout,
         currency,
         raw,
@@ -279,7 +291,7 @@ async function handle(req: Request) {
         type,
         status,
         externalId,
-        advertiserAmount: advertiserAmount ?? undefined,
+        advertiserAmount: finalAdvertiserAmount ?? undefined,
         affiliatePayout,
         currency,
         raw,
@@ -301,15 +313,25 @@ async function handle(req: Request) {
       },
     });
 
+    const savedAdvertiserAmount =
+      saved.advertiserAmount == null ? 0 : Number(saved.advertiserAmount);
+    const savedAffiliatePayout = Number(saved.affiliatePayout || 0);
+    const grossMargin = savedAdvertiserAmount - savedAffiliatePayout;
+    const marginPercent =
+      savedAdvertiserAmount > 0
+        ? (grossMargin / savedAdvertiserAmount) * 100
+        : 0;
+
     return response({
       ok: true,
       dedup: Boolean(existing),
       capReached,
       conversion: {
         ...saved,
-        advertiserAmount:
-          saved.advertiserAmount == null ? null : Number(saved.advertiserAmount),
-        affiliatePayout: Number(saved.affiliatePayout || 0),
+        advertiserAmount: savedAdvertiserAmount,
+        affiliatePayout: savedAffiliatePayout,
+        grossMargin,
+        marginPercent,
       },
     });
   } catch (error: any) {
