@@ -1,57 +1,91 @@
-// src/app/api/auth/signup/route.ts
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+const applicationSchema = z.object({
+  email: z.string().trim().email().max(191),
+  password: z.string().min(8).max(128),
+  name: z.string().trim().min(2).max(120),
+  telegram: z.string().trim().min(2).max(191),
+  company: z.string().trim().min(2).max(191),
+  trafficSources: z.array(z.string().trim().min(1).max(80)).min(1).max(20),
+  mainGeos: z.array(z.string().trim().min(2).max(12)).min(1).max(40),
+  verticalInterests: z.array(z.string().trim().min(1).max(80)).min(1).max(20),
+  experience: z.string().trim().min(1).max(500),
+  estimatedMonthlyVolume: z.string().trim().min(1).max(191),
+  about: z.string().trim().max(4000).optional().default(""),
+});
+
 export async function POST(req: Request) {
   try {
-    const { email, password, name, telegram } = await req.json();
-
-    if (!email || !password) {
+    const parsed = applicationSchema.safeParse(await req.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { ok: false, error: "Email and password are required" },
-        { status: 400 }
+        { ok: false, error: "Please check the application fields and try again." },
+        { status: 400 },
       );
     }
 
-    const normalized = String(email).toLowerCase().trim();
+    const input = parsed.data;
+    const email = input.email.toLowerCase();
 
-    const exists = await prisma.user.findUnique({ where: { email: normalized } });
+    const exists = await prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (exists) {
       return NextResponse.json(
-        { ok: false, error: "User already exists" },
-        { status: 409 }
+        { ok: false, error: "An account with this email already exists." },
+        { status: 409 },
       );
     }
 
     const rounds = Number.parseInt(String(process.env.BCRYPT_SALT_ROUNDS ?? 12), 10);
-    const saltRounds = Number.isFinite(rounds) ? rounds : 12;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
+    const passwordHash = await bcrypt.hash(input.password, Number.isFinite(rounds) ? rounds : 12);
 
-    const created = await prisma.user.create({
-      data: {
-        email: normalized,
-        name: name ?? null,
-        // если поля нет в схеме — удалите строку ниже
-        telegram: telegram ?? null,
-        passwordHash,
-        // 🔧 универсально для любых версий Prisma Client:
-        role: "USER" as any,
-        status: "PENDING" as any,
-      },
-      select: { id: true, email: true, name: true },
+    const created = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email,
+          name: input.name,
+          telegram: input.telegram,
+          passwordHash,
+          role: "USER",
+          status: "PENDING",
+          tier: 3,
+        },
+        select: { id: true, email: true },
+      });
+
+      const application = await tx.affiliateApplication.create({
+        data: {
+          userId: user.id,
+          company: input.company,
+          trafficSources: input.trafficSources,
+          mainGeos: input.mainGeos,
+          verticalInterests: input.verticalInterests,
+          experience: input.experience,
+          estimatedMonthlyVolume: input.estimatedMonthlyVolume,
+          about: input.about || null,
+          status: "PENDING",
+        },
+        select: { id: true, status: true, createdAt: true },
+      });
+
+      return { user, application };
     });
 
-    const user = { ...created, status: "PENDING" as const };
-
     return NextResponse.json(
-      { ok: true, user, message: "Registration submitted. Wait for approval." },
-      { status: 201 }
+      {
+        ok: true,
+        userId: created.user.id,
+        applicationId: created.application.id,
+        status: created.application.status,
+      },
+      { status: 201 },
     );
-  } catch (e) {
-    console.error("signup error", e);
-    return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
+  } catch (error) {
+    console.error("NEXUS signup error", error);
+    return NextResponse.json({ ok: false, error: "Server error. Please try again." }, { status: 500 });
   }
 }

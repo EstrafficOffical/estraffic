@@ -7,8 +7,8 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
 /** Строковые типы под схему */
-type Role = "USER" | "ADMIN";
-type UserStatus = "PENDING" | "APPROVED" | "BANNED";
+type Role = "USER" | "MANAGER" | "ADMIN" | "OWNER";
+type UserStatus = "PENDING" | "APPROVED" | "SUSPENDED" | "BANNED";
 
 /** Augmentation next-auth */
 declare module "next-auth" {
@@ -97,9 +97,8 @@ export const authOptions: NextAuthOptions = {
           if (!user?.passwordHash) return null;
 
           const status = (user as any).status as UserStatus | undefined;
-          if (status === "BANNED") return null;
-          // если нужно пускать только APPROVED:
-          // if (status && status !== "APPROVED") return null;
+          // Only approved accounts can create a platform session.
+          if (status !== "APPROVED") return null;
 
           const ok = await bcrypt.compare(password, user.passwordHash);
           if (!ok) return null;

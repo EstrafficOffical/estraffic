@@ -66,7 +66,7 @@ export default function NavDrawer({
   }, [userEmailProp]);
 
   const authed = !!email;
-  const isAdmin = isAdminProp ?? role === "ADMIN";
+  const isAdmin = isAdminProp ?? ["OWNER", "ADMIN"].includes(String(role || ""));
   const badge =
     userBadgeProp ?? ([role, statusFlag].filter(Boolean).join(" · ") || undefined);
 
@@ -150,6 +150,7 @@ export default function NavDrawer({
                   {A("/admin/offers/settings", "Настройки офферов")}
                   {A("/admin/requests", "Заявки на офферы")}
                   {A("/admin/offers", "Офферы (админ)")}
+                  {A("/admin/registrations", "Регистрации")}
                   {A("/admin/users", "Пользователи")}
                   {A("/postbacks", "Постбеки")}
                   {A("/conversions", "Конверсии")}

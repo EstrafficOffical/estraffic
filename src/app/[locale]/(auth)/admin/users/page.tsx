@@ -40,7 +40,7 @@ export default async function Page({
   params: { locale: string };
 }) {
   const session = await auth();
-  if (!session?.user || (session.user as any).role !== "ADMIN") {
+  if (!session?.user || !["OWNER", "ADMIN"].includes(String((session.user as any).role))) {
     redirect(`/api/auth/signin?callbackUrl=/${locale}/admin/users`);
   }
 
@@ -110,12 +110,15 @@ export default async function Page({
           <option value="">Все статусы</option>
           <option value="PENDING">PENDING</option>
           <option value="APPROVED">APPROVED</option>
+          <option value="SUSPENDED">SUSPENDED</option>
           <option value="BANNED">BANNED</option>
         </select>
         <select name="role" defaultValue={role} className="bg-zinc-900 text-white rounded-xl px-3 py-2">
           <option value="">Все роли</option>
           <option value="USER">USER</option>
+          <option value="MANAGER">MANAGER</option>
           <option value="ADMIN">ADMIN</option>
+          <option value="OWNER">OWNER</option>
         </select>
         <button className="rounded-xl border border-white/20 px-3 py-2 hover:bg-white/10">Фильтр</button>
       </form>
