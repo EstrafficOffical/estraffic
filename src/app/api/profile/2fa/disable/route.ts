@@ -1,0 +1,108 @@
+import bcrypt from "bcryptjs";
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import {
+  decryptTwoFactorSecret,
+  recoveryHashMatches,
+  verifyTotpCode,
+} from "@/lib/nexus-2fa";
+
+export const dynamic = "force-dynamic";
+
+export async function POST(req: Request) {
+  const session = await auth();
+  const userId = String((session?.user as any)?.id || "");
+
+  if (!userId) {
+    return NextResponse.json(
+      { ok: false, error: "UNAUTHORIZED" },
+      { status: 401 },
+    );
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const currentPassword = String(body?.currentPassword || "");
+  const verificationCode = String(body?.verificationCode || "").trim();
+
+  if (!currentPassword || !verificationCode) {
+    return NextResponse.json(
+      { ok: false, error: "VERIFICATION_REQUIRED" },
+      { status: 400 },
+    );
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      status: true,
+      passwordHash: true,
+      twoFactor: true,
+    },
+  });
+
+  if (
+    !user ||
+    user.status !== "APPROVED" ||
+    !user.passwordHash ||
+    !user.twoFactor?.enabled ||
+    !user.twoFactor.secretEnc
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "TWO_FACTOR_NOT_ENABLED" },
+      { status: 400 },
+    );
+  }
+
+  const passwordOk = await bcrypt.compare(
+    currentPassword,
+    user.passwordHash,
+  );
+
+  if (!passwordOk) {
+    return NextResponse.json(
+      { ok: false, error: "WRONG_PASSWORD" },
+      { status: 400 },
+    );
+  }
+
+  let verified = false;
+
+  if (/^\d{6}$/.test(verificationCode)) {
+    const secret = decryptTwoFactorSecret(user.twoFactor.secretEnc);
+    verified = verifyTotpCode(secret, verificationCode);
+  } else {
+    verified = user.twoFactor.recoveryHashes.some((hash) =>
+      recoveryHashMatches(hash, verificationCode),
+    );
+  }
+
+  if (!verified) {
+    return NextResponse.json(
+      { ok: false, error: "INVALID_2FA_CODE" },
+      { status: 400 },
+    );
+  }
+
+  await prisma.nexusTwoFactor.update({
+    where: { userId },
+    data: {
+      enabled: false,
+      secretEnc: null,
+      pendingSecretEnc: null,
+      setupExpiresAt: null,
+      recoveryHashes: [],
+      confirmedAt: null,
+      lastUsedAt: null,
+    },
+  });
+
+  return NextResponse.json(
+    { ok: true, enabled: false },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    },
+  );
+}
