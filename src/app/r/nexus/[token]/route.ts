@@ -104,6 +104,7 @@ export async function GET(req: Request, ctx: { params: { token: string } }) {
       },
     },
     include: {
+      termsVersion: true,
       flow: {
         include: {
           market: {
@@ -121,6 +122,14 @@ export async function GET(req: Request, ctx: { params: { token: string } }) {
   }
 
   const flow = access.flow;
+  const affiliateCpaSnapshot =
+    access.customAffiliateCpa ?? access.termsVersion?.affiliateCpa ?? null;
+  const advertiserCpaSnapshot =
+    access.termsVersion?.advertiserCpa ?? null;
+  const currencySnapshot =
+    access.termsVersion?.currency ?? "USD";
+  const capFtdSnapshot =
+    access.customCapFtd ?? access.termsVersion?.capFtd ?? null;
 
   if (
     flow.status !== "ACTIVE" ||
@@ -176,6 +185,10 @@ export async function GET(req: Request, ctx: { params: { token: string } }) {
       userId: link.userId,
       flowId: flow.id,
       termsVersionId: access.termsVersionId ?? null,
+      affiliateCpaSnapshot,
+      advertiserCpaSnapshot,
+      currencySnapshot,
+      capFtdSnapshot,
       sub1,
       sub2,
       sub3,

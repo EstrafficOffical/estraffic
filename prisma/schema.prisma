@@ -536,29 +536,69 @@ model NexusTrackingLink {
 }
 
 model NexusClick {
-  id             String   @id @default(cuid())
-  clickId        String   @unique
-  trackingLinkId String
-  userId         String
-  flowId         String
-  termsVersionId String?
-  sub1           String?  @db.VarChar(191)
-  sub2           String?  @db.VarChar(191)
-  sub3           String?  @db.VarChar(191)
-  sub4           String?  @db.VarChar(191)
-  sub5           String?  @db.VarChar(191)
-  source         String?  @db.VarChar(191)
-  campaign       String?  @db.VarChar(191)
-  adset          String?  @db.VarChar(191)
-  creative       String?  @db.VarChar(191)
-  ip             String?  @db.VarChar(191)
-  userAgent      String?  @db.Text
-  referer        String?  @db.Text
-  destinationUrl String?  @db.Text
-  createdAt      DateTime @default(now())
+  id                    String   @id @default(cuid())
+  clickId               String   @unique
+  trackingLinkId        String
+  userId                String
+  flowId                String
+  termsVersionId        String?
+  sub1                  String?  @db.VarChar(191)
+  sub2                  String?  @db.VarChar(191)
+  sub3                  String?  @db.VarChar(191)
+  sub4                  String?  @db.VarChar(191)
+  sub5                  String?  @db.VarChar(191)
+  source                String?  @db.VarChar(191)
+  campaign              String?  @db.VarChar(191)
+  adset                 String?  @db.VarChar(191)
+  creative              String?  @db.VarChar(191)
+  ip                    String?  @db.VarChar(191)
+  userAgent             String?  @db.Text
+  referer               String?  @db.Text
+  destinationUrl        String?  @db.Text
+  affiliateCpaSnapshot  Decimal? @db.Decimal(12, 2)
+  advertiserCpaSnapshot Decimal? @db.Decimal(12, 2)
+  currencySnapshot      String?  @db.VarChar(12)
+  capFtdSnapshot        Int?
+  createdAt             DateTime @default(now())
 
   @@index([trackingLinkId, createdAt])
   @@index([userId, createdAt])
   @@index([flowId, createdAt])
   @@index([termsVersionId, createdAt])
+}
+
+enum NexusConversionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVERSED
+}
+
+model NexusConversion {
+  id               String                @id @default(cuid())
+  nexusClickId     String
+  clickId          String                @db.VarChar(191)
+  userId           String
+  flowId           String
+  termsVersionId   String?
+  type             ConversionType
+  status           NexusConversionStatus @default(APPROVED)
+  source           String                @db.VarChar(64)
+  txId             String                @db.VarChar(191)
+  externalId       String?               @db.VarChar(191)
+  advertiserAmount Decimal?              @db.Decimal(12, 2)
+  affiliatePayout  Decimal               @default(0) @db.Decimal(12, 2)
+  currency         String                @default("USD") @db.VarChar(12)
+  raw              Json?
+  eventAt          DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@unique([source, txId])
+  @@index([clickId])
+  @@index([nexusClickId])
+  @@index([userId, createdAt])
+  @@index([flowId, createdAt])
+  @@index([termsVersionId, createdAt])
+  @@index([type, status, createdAt])
 }
