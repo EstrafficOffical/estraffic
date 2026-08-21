@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const userId = (session!.user as any).id as string;
 
   const [clicks, convAgg, regs, deps] = await Promise.all([
-    prisma.click.count({
+    prisma.nexusClick.count({
       where: { userId, createdAt: { gte: from, lt: to } },
     }),
     prisma.conversion.aggregate({

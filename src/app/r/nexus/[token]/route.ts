@@ -13,6 +13,20 @@ function optionalParam(url: URL, key: string) {
   return value || undefined;
 }
 
+function isSpeculativeNavigation(req: Request) {
+  const purpose = (req.headers.get("purpose") || "").toLowerCase();
+  const secPurpose = (req.headers.get("sec-purpose") || "").toLowerCase();
+  const nextRouterPrefetch = (req.headers.get("next-router-prefetch") || "").toLowerCase();
+
+  return (
+    purpose.includes("prefetch") ||
+    purpose.includes("prerender") ||
+    secPurpose.includes("prefetch") ||
+    secPurpose.includes("prerender") ||
+    nextRouterPrefetch === "1"
+  );
+}
+
 function buildDestination(
   targetUrl: string,
   values: {
@@ -58,6 +72,20 @@ function buildDestination(
 
 export async function GET(req: Request, ctx: { params: { token: string } }) {
   const token = ctx.params.token;
+
+  // Chromium/Opera may issue a speculative prefetch/prerender request immediately
+  // before the real navigation. Never count or redirect speculative requests.
+  if (isSpeculativeNavigation(req)) {
+    return new NextResponse(null, {
+      status: 204,
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "X-Nexus-Prefetch-Ignored": "1",
+        Vary: "Purpose, Sec-Purpose, Next-Router-Prefetch",
+      },
+    });
+  }
+
   const incoming = new URL(req.url);
 
   const link = await prisma.nexusTrackingLink.findUnique({

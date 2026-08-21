@@ -27,7 +27,16 @@ function jsonSafe(value: unknown): unknown {
 }
 
 async function currentUser() {
-  const session = await getServerSession(authOptions);
+  const session = (await getServerSession(authOptions)) as
+    | {
+        user?: {
+          id?: string;
+          email?: string | null;
+          role?: string | null;
+          status?: string | null;
+        };
+      }
+    | null;
   const email = session?.user?.email?.trim().toLowerCase();
 
   if (!email) {

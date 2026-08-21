@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 type StaffRole = "OWNER" | "ADMIN" | "MANAGER";
 
-function roleFromSession(session: Awaited<ReturnType<typeof getServerSession>>): StaffRole | null {
+function roleFromSession(session: { user?: { role?: string | null } } | null): StaffRole | null {
   const role = (session?.user as { role?: string } | undefined)?.role;
   if (role === "OWNER" || role === "ADMIN" || role === "MANAGER") return role;
   return null;

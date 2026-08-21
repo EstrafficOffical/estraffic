@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   const userId = (session!.user as any).id as string;
 
   // Вытащим сырые данные (по дням) отдельными запросами и сведём
-  const clicks = await prisma.click.groupBy({
+  const clicks = await prisma.nexusClick.groupBy({
     by: ["createdAt"],
     where: { userId, createdAt: { gte: from, lt: to } },
     _count: { _all: true },

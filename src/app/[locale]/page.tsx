@@ -34,13 +34,13 @@ export default async function HomePage({ params: { locale } }: { params: { local
   if (!user) return <NexusLanding locale={locale} />;
 
   const [clicks, registrations, ftd, revenueAgg, paidAgg, pendingPayoutAgg, approvedOffers, recent] = await Promise.all([
-    prisma.click.count({ where: { userId } }),
+    prisma.nexusClick.count({ where: { userId } }),
     prisma.conversion.count({ where: { userId, type: "REG" } }),
     prisma.conversion.count({ where: { userId, type: "DEP" } }),
     prisma.conversion.aggregate({ where: { userId }, _sum: { amount: true } }),
     prisma.payout.aggregate({ where: { userId, status: "Paid" }, _sum: { amount: true } }),
     prisma.payout.aggregate({ where: { userId, status: "Pending" }, _sum: { amount: true } }),
-    prisma.offerAccess.count({ where: { userId, approved: true } }),
+    prisma.flowAccess.count({ where: { userId, status: "APPROVED" } }),
     prisma.conversion.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
