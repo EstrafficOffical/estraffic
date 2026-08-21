@@ -29,7 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* укажем предпочитаемую цветовую схему */}
         <meta name="color-scheme" content="dark" />
       </head>
-      <body className="min-h-screen antialiased bg-gradient-to-b from-[#1a1a1a] to-[#2a2a2a] text-white">
+      <body className="min-h-screen antialiased bg-[#08080b] text-white">
         {children}
       </body>
     </html>

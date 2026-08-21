@@ -28,6 +28,7 @@ declare module "next-auth" {
       role: Role;
       status: UserStatus;
       image?: string | null;
+      tier?: number;
     };
   }
 }
@@ -39,6 +40,7 @@ declare module "next-auth/jwt" {
     email?: string | null;
     name?: string | null;
     picture?: string | null;
+    tier?: number;
   }
 }
 
@@ -110,6 +112,7 @@ export const authOptions: NextAuthOptions = {
             image: user.image ?? null,
             role: ((user as any).role ?? "USER") as Role,
             status: ((user as any).status ?? "PENDING") as UserStatus,
+            tier: (user as any).tier ?? 3,
           } as any;
         } catch (e) {
           console.error("authorize error", e);
@@ -128,6 +131,7 @@ export const authOptions: NextAuthOptions = {
         token.email = (user as any).email ?? token.email;
         token.name = (user as any).name ?? token.name;
         token.picture = (user as any).image ?? token.picture;
+        token.tier = (user as any).tier ?? 3;
         return token;
       }
 
@@ -140,6 +144,7 @@ export const authOptions: NextAuthOptions = {
             token.status = ((u as any).status ?? token.status) as UserStatus;
             token.name = u.name ?? token.name;
             token.picture = u.image ?? token.picture;
+            token.tier = (u as any).tier ?? token.tier ?? 3;
           }
         } catch (e) {
           console.error("jwt callback fetch user error", e);
@@ -157,6 +162,7 @@ export const authOptions: NextAuthOptions = {
         image: (token.picture as string) ?? session.user?.image ?? null,
         role: ((token.role as Role) ?? "USER") as Role,
         status: ((token.status as UserStatus) ?? "PENDING") as UserStatus,
+        tier: Number(token.tier ?? 3),
       };
       return session;
     },

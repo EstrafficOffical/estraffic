@@ -1,6 +1,6 @@
-﻿// src/app/[locale]/(auth)/layout.tsx
-import  {auth}  from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import NexusAppShell from "@/app/components/NexusAppShell";
 
 export default async function AuthLayout({
   children,
@@ -9,13 +9,27 @@ export default async function AuthLayout({
   children: React.ReactNode;
   params: { locale: string };
 }) {
-  // ВАЖНО: именованный импорт { auth }, НЕ default!
   const session = await auth();
 
-  // Не залогинен? выкидываем на главную. (Группа (auth) закрыта)
   if (!session?.user) {
-    redirect(`/${locale}`);
+    redirect(`/${locale}/login`);
   }
 
-  return <>{children}</>;
+  if (session.user.status !== "APPROVED") {
+    redirect(`/${locale}/status`);
+  }
+
+  return (
+    <NexusAppShell
+      locale={locale}
+      user={{
+        name: session.user.name,
+        email: session.user.email,
+        role: session.user.role,
+        tier: (session.user as any).tier ?? 3,
+      }}
+    >
+      {children}
+    </NexusAppShell>
+  );
 }
