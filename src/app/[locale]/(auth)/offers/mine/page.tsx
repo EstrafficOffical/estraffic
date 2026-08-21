@@ -1,29 +1,257 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { EmptyState, PageHeader, Panel, Pill } from "@/app/components/NexusPageKit";
 
-type Offer = { id: string; title: string; tag?: string | null; geo: string; vertical: string; tier: number; cpa: number | null; cap?: number | null; minDeposit?: number | null; holdDays?: number | null; rules?: string | null; notes?: string | null; kpi1?: unknown; kpi2?: unknown; kpi1Text?: string | null; kpi2Text?: string | null; mode: "Auto" | "Manual"; };
+type ApprovedFlow = {
+  accessId: string;
+  approvedAt: string | null;
+  brand: string;
+  vertical: string;
+  geo: string;
+  flowId: string;
+  flowName: string;
+  trafficSource: string;
+  approach: string | null;
+  tier: number;
+  targetUrl: string | null;
+  trackingTemplate: string | null;
+  terms: {
+    version: number | null;
+    affiliateCpa: string | null;
+    currency: string;
+    capFtd: number | null;
+    minDeposit: string | null;
+    validationTiming: string | null;
+    fraudHoldDays: number | null;
+  };
+};
+
+type Payload = {
+  flows: ApprovedFlow[];
+};
+
+const card = "rounded-2xl border border-white/10 bg-[#0d0f14]";
+const input =
+  "h-11 rounded-xl border border-white/10 bg-[#090b10] px-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-[#7357ff]/60";
+
+function money(value: string | null, currency = "USD") {
+  if (!value) return "-";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(number);
+}
 
 export default function MyOffersPage() {
-  const [rows, setRows] = useState<Offer[]>([]); const [loading, setLoading] = useState(true); const [q, setQ] = useState(""); const [expanded, setExpanded] = useState<string | null>(null); const [subIds, setSubIds] = useState<Record<string,string>>({}); const [links, setLinks] = useState<Record<string,string>>({}); const [busy, setBusy] = useState<string | null>(null);
-  useEffect(() => { fetch("/api/offers/mine", { cache: "no-store" }).then(r=>r.json()).then(j=>setRows(Array.isArray(j?.items)?j.items:[])).finally(()=>setLoading(false)); }, []);
-  const filtered = useMemo(() => rows.filter(r => `${r.title} ${r.geo} ${r.vertical} ${r.tag ?? ""}`.toLowerCase().includes(q.toLowerCase())), [rows,q]);
-  async function buildLink(offerId:string){ setBusy(offerId); try { const res=await fetch("/api/offers/link",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({offerId,subId:subIds[offerId]||undefined})}); const j=await res.json(); if(!res.ok||!j?.link) return alert(j?.error??"Unable to build tracking link"); setLinks(p=>({...p,[offerId]:j.link})); } finally { setBusy(null); } }
-  async function copy(id:string){ if(links[id]) await navigator.clipboard.writeText(links[id]); }
-  return <div className="pb-10"><PageHeader eyebrow="Affiliate" title="My Offers" subtitle="Approved offers, commercial terms and live tracking-link generation." />
-    <div className="space-y-5 p-5 md:p-8">
-      <div className="grid gap-4 sm:grid-cols-3"><Stat label="Approved flows" value={rows.length}/><Stat label="Tracking ready" value={rows.filter(r=>!!r.id).length}/><Stat label="Catalog source" value="Live DB"/></div>
-      <Panel className="p-4"><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search approved offers" className="h-10 w-full rounded-lg border border-white/[0.08] bg-black/20 px-3 text-[13px] text-white outline-none placeholder:text-white/25 focus:border-[#7657ff]/40" /></Panel>
-      {loading?<Panel><EmptyState title="Loading approved offers…"/></Panel>:filtered.length===0?<Panel><EmptyState title="No approved offers yet" description="Request access from Offers. Once approved by staff, the offer appears here automatically."/></Panel>:<div className="space-y-4">{filtered.map(r=><article key={r.id} className="rounded-xl border border-white/[0.08] bg-white/[0.025]">
-        <button onClick={()=>setExpanded(expanded===r.id?null:r.id)} className="flex w-full items-center justify-between gap-4 p-5 text-left"><div><div className="flex flex-wrap items-center gap-2"><span className="text-[15px] font-semibold text-white">{r.title}</span><Pill tone="success">Approved</Pill><Pill>Tier {r.tier}</Pill></div><div className="mt-1.5 text-xs text-white/38">{r.geo} · {r.vertical}{r.tag?` · ${r.tag}`:""}</div></div><div className="text-xs text-[#8e79ff]">{expanded===r.id?"Hide details":"Open details"}</div></button>
-        {expanded===r.id?<div className="border-t border-white/[0.07] p-5"><div className="grid gap-3 sm:grid-cols-4"><Mini label="CPA" value={r.cpa==null?"—":`$${r.cpa.toFixed(2)}`}/><Mini label="Cap" value={r.cap??"—"}/><Mini label="Min deposit" value={r.minDeposit==null?"—":`$${r.minDeposit.toFixed(2)}`}/><Mini label="Hold" value={r.holdDays==null?"—":`${r.holdDays}d`}/></div>
-          <div className="mt-4 rounded-xl border border-[#7657ff]/20 bg-[#7657ff]/[0.045] p-4"><div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#927cff]">Tracking link</div><div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto_auto]"><input value={subIds[r.id]??""} onChange={e=>setSubIds(p=>({...p,[r.id]:e.target.value}))} placeholder="sub_id (optional)" className="h-10 rounded-lg border border-white/[0.08] bg-black/25 px-3 text-xs text-white outline-none"/><button onClick={()=>buildLink(r.id)} disabled={busy===r.id} className="rounded-lg bg-[#7657ff] px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">{busy===r.id?"Building…":"Build link"}</button><button onClick={()=>copy(r.id)} disabled={!links[r.id]} className="rounded-lg border border-white/[0.1] bg-white/[0.03] px-4 py-2 text-xs text-white/65 disabled:opacity-35">Copy</button></div>{links[r.id]?<div className="mt-3 break-all rounded-lg border border-white/[0.07] bg-black/20 p-3 font-mono text-[11px] text-white/55">{links[r.id]}</div>:null}</div>
-          {(r.rules||r.notes)?<div className="mt-4 grid gap-3 md:grid-cols-2">{r.rules?<TextBlock title="Rules" text={r.rules}/>:null}{r.notes?<TextBlock title="Notes" text={r.notes}/>:null}</div>:null}
-        </div>:null}
-      </article>)}</div>}
-    </div></div>;
+  const [data, setData] = useState<Payload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+
+    const response = await fetch("/api/nexus/affiliate/my-offers", {
+      cache: "no-store",
+    });
+    const json = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setError(json?.error || "Failed to load My Offers");
+      setLoading(false);
+      return;
+    }
+
+    setData(json);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return data?.flows ?? [];
+
+    return (data?.flows ?? []).filter((flow) =>
+      [
+        flow.brand,
+        flow.vertical,
+        flow.geo,
+        flow.flowName,
+        flow.trafficSource,
+        flow.approach ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [data, search]);
+
+  return (
+    <div className="min-h-screen bg-[#08090d] text-white">
+      <div className="mx-auto w-full max-w-[1500px] px-6 py-10 lg:px-10">
+        <div className="mb-8">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-[#8068ff]">
+            Affiliate
+          </div>
+          <h1 className="text-4xl font-semibold tracking-[-0.04em]">My Offers</h1>
+          <p className="mt-3 text-sm text-white/45">
+            Approved NEXUS flows with the commercial terms version frozen at approval time.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-5 rounded-2xl border border-red-500/25 bg-red-500/[0.08] px-4 py-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        <div className="mb-6 grid gap-3 md:grid-cols-3">
+          <Metric label="Approved flows" value={String(data?.flows.length ?? 0)} />
+          <Metric
+            label="Tracking ready"
+            value={String((data?.flows ?? []).filter((flow) => flow.targetUrl || flow.trackingTemplate).length)}
+          />
+          <Metric label="Catalog source" value="Live DB" />
+        </div>
+
+        <div className={`${card} mb-5 p-4`}>
+          <input
+            className={`${input} w-full`}
+            placeholder="Search approved brand, GEO, flow..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+
+        {loading ? (
+          <div className={`${card} flex min-h-72 items-center justify-center text-sm text-white/40`}>
+            Loading approved flows...
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className={`${card} flex min-h-72 flex-col items-center justify-center px-6 text-center`}>
+            <div className="text-lg font-semibold">No approved offers yet</div>
+            <div className="mt-2 max-w-lg text-sm leading-6 text-white/40">
+              Request access from Offers. Once staff approves the request, the flow appears here automatically.
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filtered.map((flow) => (
+              <article key={flow.accessId} className={`${card} overflow-hidden`}>
+                <div className="grid gap-5 border-b border-white/8 p-5 xl:grid-cols-[1.2fr_1fr_auto] xl:items-start">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-xl font-semibold">{flow.brand}</h2>
+                      <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                        {flow.geo}
+                      </span>
+                      <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                        Tier {flow.tier}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm font-medium text-white/75">{flow.flowName}</div>
+                    <div className="mt-1 text-xs text-white/35">
+                      {flow.trafficSource}
+                      {flow.approach ? ` / ${flow.approach}` : ""}
+                      {" / "}
+                      {flow.vertical}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30">
+                      Approved commercial snapshot
+                    </div>
+                    <div className="mt-2 text-sm text-white/60">
+                      Terms version {flow.terms.version ? `v${flow.terms.version}` : "-"}
+                    </div>
+                    <div className="mt-1 text-xs text-white/30">
+                      Approved {flow.approvedAt ? new Date(flow.approvedAt).toLocaleString() : "-"}
+                    </div>
+                  </div>
+
+                  <span className="inline-flex rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+                    Approved
+                  </span>
+                </div>
+
+                <div className="grid gap-px bg-white/[0.06] sm:grid-cols-2 xl:grid-cols-5">
+                  <OfferMetric
+                    label="Affiliate CPA"
+                    value={money(flow.terms.affiliateCpa, flow.terms.currency)}
+                  />
+                  <OfferMetric
+                    label="Cap FTD"
+                    value={flow.terms.capFtd == null ? "-" : String(flow.terms.capFtd)}
+                  />
+                  <OfferMetric
+                    label="Min deposit"
+                    value={money(flow.terms.minDeposit, flow.terms.currency)}
+                  />
+                  <OfferMetric
+                    label="Validation"
+                    value={flow.terms.validationTiming || "-"}
+                  />
+                  <OfferMetric
+                    label="Fraud hold"
+                    value={flow.terms.fraudHoldDays == null ? "-" : `${flow.terms.fraudHoldDays} days`}
+                  />
+                </div>
+
+                <div className="border-t border-white/8 px-5 py-4">
+                  {flow.targetUrl || flow.trackingTemplate ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Tracking configuration available</div>
+                        <div className="mt-1 text-xs text-white/35">
+                          Link generation will be wired to the NEXUS click-tracking endpoint in the next tracking step.
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-[#7357ff]/25 bg-[#7357ff]/10 px-3 py-1.5 text-xs font-semibold text-[#a291ff]">
+                        Tracking ready
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-sm font-semibold text-white/65">Tracking target not configured yet</div>
+                      <div className="mt-1 text-xs text-white/30">
+                        Staff can configure target URL / tracking template for this flow later.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
-function Stat({label,value}:{label:string;value:React.ReactNode}){return <div className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4"><div className="text-[10px] uppercase tracking-[0.14em] text-white/30">{label}</div><div className="mt-2 text-xl font-semibold text-white">{value}</div></div>}
-function Mini({label,value}:{label:string;value:React.ReactNode}){return <div className="rounded-lg border border-white/[0.07] bg-black/15 p-3"><div className="text-[9px] uppercase tracking-[0.13em] text-white/30">{label}</div><div className="mt-1.5 text-[14px] font-semibold text-white/85">{value}</div></div>}
-function TextBlock({title,text}:{title:string;text:string}){return <div className="rounded-lg border border-white/[0.07] bg-black/10 p-3"><div className="text-[9px] uppercase tracking-[0.13em] text-white/30">{title}</div><div className="mt-2 whitespace-pre-wrap text-xs leading-5 text-white/48">{text}</div></div>}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className={`${card} p-5`}>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30">{label}</div>
+      <div className="mt-3 text-3xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function OfferMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-[#0b0d12] px-4 py-4">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/30">{label}</div>
+      <div className="mt-2 text-sm font-semibold text-white/80">{value}</div>
+    </div>
+  );
+}
