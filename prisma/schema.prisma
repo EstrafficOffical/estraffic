@@ -737,3 +737,14 @@ model NexusLoginChallenge {
   @@index([userId, expiresAt])
   @@index([expiresAt])
 }
+
+model NexusSecurityEvent {
+  id        String   @id @default(cuid())
+  eventType String   @db.VarChar(120)
+  userId    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([userId, createdAt])
+}
