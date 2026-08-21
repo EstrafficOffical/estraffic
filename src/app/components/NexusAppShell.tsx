@@ -56,6 +56,7 @@ export default function NexusAppShell({ children, locale, user }: Props) {
     { href: `/${locale}/admin/requests`, label: "Access Requests", icon: icons.requests },
     { href: `/${locale}/admin/registrations`, label: "Registrations", icon: icons.requests },
     { href: `/${locale}/admin/users`, label: "Users", icon: icons.users },
+    { href: `/${locale}/admin/team`, label: "Team & Roles", icon: icons.users },
     { href: `/${locale}/conversions`, label: "Conversions", icon: icons.conversions },
     { href: `/${locale}/postbacks`, label: "Integrations", icon: icons.integrations },
   ], [locale]);
@@ -85,7 +86,7 @@ export default function NexusAppShell({ children, locale, user }: Props) {
         <NavSection title="Affiliate" items={affiliateNav} isActive={isActive} onNavigate={() => setMobileOpen(false)} />
         {isStaff && (
           <div className="mt-5 border-t border-white/[0.07] pt-5">
-            <NavSection title="Administration" items={isAdmin ? adminNav : adminNav.filter((i) => ["Access Requests", "Registrations", "Users"].includes(i.label))} isActive={isActive} onNavigate={() => setMobileOpen(false)} accent />
+            <NavSection title="Administration" items={isAdmin ? adminNav : adminNav.filter((i) => ["Access Requests", "Registrations", "Users", "Team & Roles"].includes(i.label))} isActive={isActive} onNavigate={() => setMobileOpen(false)} accent />
           </div>
         )}
       </nav>

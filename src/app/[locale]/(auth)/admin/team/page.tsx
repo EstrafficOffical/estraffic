@@ -1,0 +1,20 @@
+import "server-only";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import TeamActions from "./TeamActions";
+
+export const dynamic = "force-dynamic";
+export default async function TeamPage({ params: { locale } }: { params: { locale: string } }) {
+  const session = await auth(); const myRole=String((session?.user as any)?.role||""); const myId=String((session?.user as any)?.id||"");
+  if(!session?.user || !["OWNER","ADMIN","MANAGER"].includes(myRole)) redirect(`/${locale}`);
+  const staff=await prisma.user.findMany({ where:{ role:{ in:["MANAGER","ADMIN","OWNER"] } }, include:{ _count:{ select:{ managedAffiliates:true } } }, orderBy:[{role:"desc"},{name:"asc"}] });
+  const counts={ owner:staff.filter(s=>s.role==="OWNER").length, admin:staff.filter(s=>s.role==="ADMIN").length, manager:staff.filter(s=>s.role==="MANAGER").length, active:staff.filter(s=>s.status==="APPROVED").length };
+  return <div className="px-5 py-7 md:px-8 md:py-9"><div className="mx-auto max-w-[1500px]"><div className="mb-6"><div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8068ff]">Administration</div><h1 className="mt-2 text-4xl font-semibold tracking-[-0.045em]">Team & Roles</h1><p className="mt-2 text-sm text-white/45">Internal NEXUS staff access and role management.</p>{myRole==="MANAGER"&&<div className="mt-4 rounded-xl border border-amber-400/15 bg-amber-400/[0.06] px-4 py-3 text-xs text-amber-200/80">You are signed in as MANAGER. Team & Roles is read-only for your role.</div>}</div>
+  <div className="mb-5 grid gap-3 sm:grid-cols-4"><Card label="Owners" value={counts.owner}/><Card label="Admins" value={counts.admin}/><Card label="Managers" value={counts.manager}/><Card label="Active staff" value={counts.active}/></div>
+  <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#0d0d10]"><table className="min-w-[1000px] w-full text-left text-sm"><thead className="border-b border-white/[0.07] text-[10px] uppercase tracking-[0.13em] text-white/35"><tr><th className="px-4 py-3">Staff member</th><th className="px-4 py-3">Email / Telegram</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Assigned affiliates</th><th className="px-4 py-3">Actions</th></tr></thead><tbody className="divide-y divide-white/[0.06]">{staff.map(s=><tr key={s.id}><td className="px-4 py-4"><div className="font-medium text-white/90">{s.name||"NEXUS staff"}</div><div className="mt-1 text-xs text-white/35">{s.id===myId?"Current account":"Internal staff"}</div></td><td className="px-4 py-4 text-white/60"><div>{s.email}</div><div className="mt-1 text-xs text-white/35">{s.telegram||"—"}</div></td><td className="px-4 py-4"><Role role={s.role}/></td><td className="px-4 py-4"><Status value={s.status}/></td><td className="px-4 py-4 text-white/60">{s._count.managedAffiliates}</td><td className="px-4 py-4">{myRole==="MANAGER"?<span className="text-xs text-white/30">Read only</span>:<TeamActions id={s.id} role={s.role} status={s.status} myRole={myRole} isSelf={s.id===myId}/>}</td></tr>)}</tbody></table></div>
+  </div></div>;
+}
+function Card({label,value}:{label:string;value:number}){return <div className="rounded-xl border border-white/[0.08] bg-[#0d0d10] p-4"><div className="text-[9px] font-semibold uppercase tracking-[0.15em] text-white/35">{label}</div><div className="mt-2 text-2xl font-semibold">{value}</div></div>}
+function Role({role}:{role:string}){const c=role==="OWNER"?"border-[#7657ff]/35 bg-[#7657ff]/10 text-[#9b88ff]":role==="ADMIN"?"border-sky-400/25 bg-sky-400/10 text-sky-300":"border-emerald-400/25 bg-emerald-400/10 text-emerald-300";return <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${c}`}>{role}</span>}
+function Status({value}:{value:string}){return <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${value==="APPROVED"?"border-emerald-400/20 bg-emerald-400/10 text-emerald-300":"border-rose-400/20 bg-rose-400/10 text-rose-300"}`}>{value==="APPROVED"?"ACTIVE":value}</span>}

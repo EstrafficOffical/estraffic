@@ -1,188 +1,29 @@
 import "server-only";
-import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import RowActions from "./row-actions";
-import ClientHeader from "./ClientHeader";
-import WalletsCell from "./WalletsCell";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import StaffAccessActions from "./StaffAccessActions";
 
-type SearchParams = {
-  q?: string;
-  status?: string;
-  role?: string;
-  page?: string;
-  perPage?: string;
-};
+export const dynamic = "force-dynamic";
 
-type UserRow = {
-  id: string;
-  email: string | null;
-  name: string | null;
-  telegram?: string | null;
-  role: string;
-  status: string;
-  tier: number;
-  createdAt: Date;
-  wallets?: {
-    id: string;
-    label: string | null;
-    address: string;
-    isPrimary: boolean;
-    verified: boolean;
-  }[];
-};
+type SearchParams = { q?: string; status?: string };
 
-export default async function Page({
-  searchParams,
-  params: { locale },
-}: {
-  searchParams: SearchParams;
-  params: { locale: string };
-}) {
+export default async function UsersPage({ params: { locale }, searchParams }: { params: { locale: string }; searchParams: SearchParams }) {
   const session = await auth();
-  if (!session?.user || !["OWNER", "ADMIN"].includes(String((session.user as any).role))) {
-    redirect(`/api/auth/signin?callbackUrl=/${locale}/admin/users`);
-  }
+  const role = String((session?.user as any)?.role || "");
+  if (!session?.user || !["OWNER", "ADMIN", "MANAGER"].includes(role)) redirect(`/${locale}`);
+  const q = (searchParams.q || "").trim();
+  const status = (searchParams.status || "ALL").toUpperCase();
+  const users = await prisma.user.findMany({
+    where: { role: "USER", ...(status === "ALL" ? {} : { status: status as any }), ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }, { telegram: { contains: q, mode: "insensitive" } }] } : {}) },
+    include: { assignedManager: { select: { id: true, name: true, email: true } }, application: { select: { mainGeos: true, trafficSources: true } }, _count: { select: { offerAccesses: true } } },
+    orderBy: { createdAt: "desc" },
+  });
 
-  const meId = (session.user as any).id as string;
-
-  const q = (searchParams.q ?? "").trim();
-  const status = searchParams.status ?? "";
-  const role = searchParams.role ?? "";
-  const page = Math.max(1, Number(searchParams.page ?? 1));
-  const perPage = Math.min(100, Math.max(1, Number(searchParams.perPage ?? 20)));
-
-  const where: any = {
-    AND: [
-      q
-        ? {
-            OR: [
-              { email: { contains: q, mode: "insensitive" } },
-              { name: { contains: q, mode: "insensitive" } },
-              { telegram: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : {},
-      status ? { status } : {},
-      role ? { role } : {},
-    ],
-  };
-
-  const [total, prismaUsers] = await Promise.all([
-    prisma.user.count({ where }),
-    prisma.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * perPage,
-      take: perPage,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        telegram: true as any,
-        role: true,
-        status: true as any,
-        tier: true,
-        createdAt: true,
-        wallets: {
-          select: { id: true, label: true, address: true, isPrimary: true, verified: true },
-          orderBy: { isPrimary: "desc" },
-        },
-      } as any,
-    }),
-  ]);
-
-  const users = prismaUsers as unknown as UserRow[];
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-
-  return (
-    <div className="p-4 space-y-4 text-white">
-      <ClientHeader locale={locale} />
-
-      <form className="flex flex-wrap gap-2">
-        <input
-          name="q"
-          defaultValue={q}
-          placeholder="Поиск: email / имя / telegram"
-          className="bg-zinc-900 text-white placeholder-white/50 rounded-xl px-3 py-2"
-        />
-        <select name="status" defaultValue={status} className="bg-zinc-900 text-white rounded-xl px-3 py-2">
-          <option value="">Все статусы</option>
-          <option value="PENDING">PENDING</option>
-          <option value="APPROVED">APPROVED</option>
-          <option value="SUSPENDED">SUSPENDED</option>
-          <option value="BANNED">BANNED</option>
-        </select>
-        <select name="role" defaultValue={role} className="bg-zinc-900 text-white rounded-xl px-3 py-2">
-          <option value="">Все роли</option>
-          <option value="USER">USER</option>
-          <option value="MANAGER">MANAGER</option>
-          <option value="ADMIN">ADMIN</option>
-          <option value="OWNER">OWNER</option>
-        </select>
-        <button className="rounded-xl border border-white/20 px-3 py-2 hover:bg-white/10">Фильтр</button>
-      </form>
-
-      <div className="rounded-xl border border-white/10 overflow-x-auto">
-        <table className="min-w-[1180px] w-full text-sm">
-          <thead className="bg-white/5">
-            <tr>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Дата</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Email</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Кошельки</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">ID</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Имя/Telegram</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Tier</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Роль</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Статус</th>
-              <th className="text-left px-3 py-2 whitespace-nowrap">Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-t border-white/10 align-top">
-                <td className="px-3 py-2 whitespace-nowrap">
-                  {new Date(u.createdAt).toLocaleString()}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">{u.email}</td>
-
-                <td className="px-3 py-2 align-top">
-                  <WalletsCell wallets={u.wallets ?? []} />
-                </td>
-
-                <td className="px-3 py-2 font-mono text-xs text-white/70 break-all">{u.id}</td>
-                <td className="px-3 py-2">
-                  <div className="text-white/90">{u.name ?? "—"}</div>
-                  <div className="text-white/50">{u.telegram ?? "—"}</div>
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">Tier {u.tier}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{u.role}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{u.status}</td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <RowActions
-                    id={u.id}
-                    meId={meId}
-                    role={u.role as any}
-                    status={u.status as any}
-                    tier={u.tier}
-                  />
-                </td>
-              </tr>
-            ))}
-            {users.length === 0 && (
-              <tr>
-                <td className="px-3 py-8 text-center text-white/60" colSpan={9}>
-                  Ничего не найдено
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="text-white/60 text-sm">
-        Стр. {page} из {totalPages} • всего {total}
-      </div>
-    </div>
-  );
+  return <div className="px-5 py-7 md:px-8 md:py-9"><div className="mx-auto max-w-[1500px]">
+    <div className="mb-6"><div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8068ff]">Administration</div><h1 className="mt-2 text-4xl font-semibold tracking-[-0.045em]">Users</h1><p className="mt-2 text-sm text-white/45">Approved and pending affiliate accounts backed by PostgreSQL.</p></div>
+    <form className="mb-4 flex gap-2 rounded-xl border border-white/[0.08] bg-[#0d0d10] p-3"><input name="q" defaultValue={q} placeholder="Search name, email, Telegram…" className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-[#111115] px-3 py-2 text-sm outline-none focus:border-[#7657ff]/40"/><select name="status" defaultValue={status} className="rounded-lg border border-white/[0.08] bg-[#111115] px-3 py-2 text-sm"><option value="ALL">All statuses</option><option value="APPROVED">Approved</option><option value="PENDING">Pending</option><option value="SUSPENDED">Suspended</option><option value="BANNED">Banned</option></select><button className="rounded-lg bg-[#7657ff] px-4 py-2 text-sm font-semibold">Filter</button></form>
+    <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#0d0d10]"><table className="min-w-[1100px] w-full text-left text-sm"><thead className="border-b border-white/[0.07] text-[10px] uppercase tracking-[0.13em] text-white/35"><tr><th className="px-4 py-3">Affiliate</th><th className="px-4 py-3">Tier</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Manager</th><th className="px-4 py-3">Traffic</th><th className="px-4 py-3">Flows</th><th className="px-4 py-3">Registered</th><th className="px-4 py-3">Staff access</th></tr></thead><tbody className="divide-y divide-white/[0.06]">{users.map(u => <tr key={u.id} className="text-white/70"><td className="px-4 py-4"><div className="font-medium text-white/90">{u.name || "Unnamed affiliate"}</div><div className="mt-1 text-xs text-white/35">{u.email}{u.telegram ? ` · ${u.telegram}` : ""}</div></td><td className="px-4 py-4">Tier {u.tier}</td><td className="px-4 py-4"><Status value={u.status}/></td><td className="px-4 py-4">{u.assignedManager?.name || u.assignedManager?.email || "Unassigned"}</td><td className="px-4 py-4 text-xs text-white/45">{[...(u.application?.trafficSources || []), ...(u.application?.mainGeos || [])].slice(0,4).join(" · ") || "—"}</td><td className="px-4 py-4">{u._count.offerAccesses}</td><td className="px-4 py-4 text-xs text-white/45">{u.createdAt.toLocaleDateString()}</td><td className="px-4 py-4">{role === "OWNER" ? <StaffAccessActions userId={u.id} /> : <span className="text-xs text-white/30">OWNER only</span>}</td></tr>)}{!users.length && <tr><td colSpan={8} className="px-6 py-14 text-center text-white/35">No affiliates found</td></tr>}</tbody></table></div>
+  </div></div>;
 }
+function Status({ value }: { value: string }) { const cls = value === "APPROVED" ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-300" : value === "PENDING" ? "border-amber-400/20 bg-amber-400/10 text-amber-300" : "border-rose-400/20 bg-rose-400/10 text-rose-300"; return <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${cls}`}>{value}</span>; }
