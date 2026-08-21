@@ -92,6 +92,7 @@ const prisma = new PrismaClient();
 
   const base = "http://localhost:3000/api/nexus/postback";
   const stamp = Date.now();
+  const depTxId = `smoke-ftd-${stamp}`;
 
   const send = async (event, txId, status = "approved") => {
     const url = new URL(base);
@@ -114,38 +115,85 @@ const prisma = new PrismaClient();
   };
 
   const reg = await send("REG", `smoke-reg-${stamp}`);
-  const dep = await send("FTD", `smoke-ftd-${stamp}`);
+  const dep = await send("FTD", depTxId);
 
-  // Idempotency test: same FTD tx_id must update the same conversion, not create another one.
-  const depAgain = await send("FTD", `smoke-ftd-${stamp}`);
+  // Idempotency test: same FTD tx_id must update the same conversion,
+  // and must not create duplicate finance entries.
+  const depAgain = await send("FTD", depTxId);
 
-  console.log("\nSmoke result:");
-  console.log({
+  const storedDep = await prisma.nexusConversion.findUnique({
+    where: {
+      source_txId: {
+        source: "SMOKE",
+        txId: depTxId,
+      },
+    },
+  });
+
+  if (!storedDep) {
+    throw new Error("Smoke FTD conversion was not stored.");
+  }
+
+  const earning = await prisma.nexusEarning.findUnique({
+    where: {
+      nexusConversionId: storedDep.id,
+    },
+  });
+
+  const earningLedger = await prisma.nexusFinanceLedger.findMany({
+    where: {
+      nexusConversionId: storedDep.id,
+      kind: "EARNING_CREDIT",
+      bucket: "PENDING",
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  console.log("\nFinance records for smoke FTD:");
+  console.table([
+    {
+      conversionId: storedDep.id,
+      affiliatePayout: String(storedDep.affiliatePayout),
+      earningId: earning?.id ?? "",
+      earningStatus: earning?.status ?? "",
+      earningAmount: String(earning?.amount ?? ""),
+      releaseAt: earning?.releaseAt?.toISOString() ?? "",
+      pendingLedgerRows: earningLedger.length,
+      pendingLedgerAmount:
+        earningLedger.length === 1 ? String(earningLedger[0].amount) : "",
+    },
+  ]);
+
+  const payout = Number(storedDep.affiliatePayout || 0);
+
+  const result = {
     regOk: reg.ok === true,
     depOk: dep.ok === true,
     depDedupOnSecondSend: depAgain.dedup === true,
-  });
+    earningExists: Boolean(earning),
+    earningPending: earning?.status === "PENDING",
+    earningAmountMatches:
+      earning != null && Number(earning.amount) === payout && payout > 0,
+    exactlyOnePendingLedgerRow: earningLedger.length === 1,
+    pendingLedgerAmountMatches:
+      earningLedger.length === 1 &&
+      Number(earningLedger[0].amount) === payout &&
+      payout > 0,
+    secondSendCreatedNoFinanceDuplicates:
+      depAgain?.finance?.earningCreated === false &&
+      depAgain?.finance?.ledgerCreated === false,
+  };
 
-  const latest = await prisma.nexusConversion.findMany({
-    where: {
-      clickId: click.clickId,
-      source: "SMOKE",
-    },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-  });
+  console.log("\nSmoke result:");
+  console.log(result);
 
-  console.log("\nStored SMOKE conversions:");
-  console.table(
-    latest.map((c) => ({
-      id: c.id,
-      type: c.type,
-      status: c.status,
-      txId: c.txId,
-      affiliatePayout: String(c.affiliatePayout),
-      currency: c.currency,
-    })),
-  );
+  const passed = Object.values(result).every(Boolean);
+
+  if (!passed) {
+    throw new Error("NEXUS postback + finance smoke test failed.");
+  }
+
+  console.log("\nPOSTBACK + FINANCE SMOKE PASSED.");
 })()
   .catch((error) => {
     console.error(error);

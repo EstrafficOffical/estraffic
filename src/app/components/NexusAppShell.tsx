@@ -52,12 +52,14 @@ export default function NexusAppShell({ children, locale, user }: Props) {
 
   const adminNav = useMemo<NavItem[]>(() => [
     { href: `/${locale}/admin/stats`, label: "Control Center", icon: icons.control },
+    { href: `/${locale}/admin/analytics`, label: "Network Analytics", icon: icons.stats },
     { href: `/${locale}/admin/offers`, label: "Offers", icon: icons.offers },
     { href: `/${locale}/admin/requests`, label: "Access Requests", icon: icons.requests },
     { href: `/${locale}/admin/registrations`, label: "Registrations", icon: icons.requests },
     { href: `/${locale}/admin/users`, label: "Users", icon: icons.users },
     { href: `/${locale}/admin/team`, label: "Team & Roles", icon: icons.users },
     { href: `/${locale}/conversions`, label: "Conversions", icon: icons.conversions },
+    { href: `/${locale}/admin/payouts`, label: "Payouts", icon: icons.conversions },
     { href: `/${locale}/postbacks`, label: "Integrations", icon: icons.integrations },
   ], [locale]);
 

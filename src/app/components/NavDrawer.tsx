@@ -1,4 +1,3 @@
-// src/app/components/NavDrawer.tsx
 "use client";
 
 import Link from "next/link";
@@ -9,7 +8,6 @@ type Props = {
   open: boolean;
   onClose: () => void;
   locale?: string;
-  // опционально — если хочешь пробрасывать извне
   isAdmin?: boolean;
   userEmail?: string;
   userBadge?: string;
@@ -20,7 +18,7 @@ type SessionPayload = {
     email?: string | null;
     name?: string | null;
     image?: string | null;
-    role?: string | null;   // приходит из next-auth callbacks
+    role?: string | null;
     status?: string | null;
   } | null;
 };
@@ -34,51 +32,78 @@ export default function NavDrawer({
   userBadge: userBadgeProp,
 }: Props) {
   const pathname = usePathname();
+
   const detectedLocale = useMemo(
-    () => (locale ?? pathname?.split("/")?.[1] ?? "ru"),
-    [locale, pathname]
+    () => locale ?? pathname?.split("/")?.[1] ?? "ru",
+    [locale, pathname],
   );
 
-  // локальная сессия (через /api/auth/session)
   const [email, setEmail] = useState<string | undefined>(userEmailProp);
   const [role, setRole] = useState<string | undefined>(undefined);
   const [statusFlag, setStatusFlag] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (userEmailProp) return; // уже пробросили
+    if (userEmailProp) return;
+
     let cancelled = false;
+
     (async () => {
       try {
-        const r = await fetch("/api/auth/session");
-        if (!r.ok) return;
-        const data = (await r.json()) as SessionPayload;
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        if (!response.ok) return;
+
+        const data = (await response.json()) as SessionPayload;
         if (cancelled) return;
+
         setEmail(data?.user?.email ?? undefined);
-        setRole((data?.user as any)?.role ?? undefined);
-        setStatusFlag((data?.user as any)?.status ?? undefined);
+        setRole(data?.user?.role ?? undefined);
+        setStatusFlag(data?.user?.status ?? undefined);
       } catch {
-        /* ignore */
+        // Session loading failure should not break navigation rendering.
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, [userEmailProp]);
 
-  const authed = !!email;
-  const isAdmin = isAdminProp ?? ["OWNER", "ADMIN"].includes(String(role || ""));
-  const badge =
-    userBadgeProp ?? ([role, statusFlag].filter(Boolean).join(" · ") || undefined);
+  useEffect(() => {
+    if (!open) return;
 
-  // утилита active-ссылки
-  const A = (href: string, label: string) => {
-    const active = pathname?.startsWith(`/${detectedLocale}${href === "/" ? "" : href}`);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  const authed = Boolean(email);
+  const isAdmin =
+    isAdminProp ?? ["OWNER", "ADMIN"].includes(String(role || ""));
+  const badge =
+    userBadgeProp ??
+    ([role, statusFlag].filter(Boolean).join(" · ") || undefined);
+
+  const hrefFor = (href: string) =>
+    `/${detectedLocale}${href === "/" ? "" : href}`;
+
+  const navItem = (href: string, label: string) => {
+    const target = hrefFor(href);
+    const active =
+      pathname === target ||
+      (href !== "/" && pathname?.startsWith(`${target}/`));
+
     return (
       <Link
-        href={`/${detectedLocale}${href}`}
+        href={target}
         onClick={onClose}
-        className={`block w-full rounded-xl px-4 py-2 text-[15px] leading-6 transition
-          ${active ? "bg-white/10 text-white" : "text-white/90 hover:bg-white/10"}`}
+        className={`flex min-h-10 items-center rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
+          active
+            ? "bg-white/[0.075] text-white"
+            : "text-white/58 hover:bg-white/[0.045] hover:text-white"
+        }`}
       >
         {label}
       </Link>
@@ -87,122 +112,153 @@ export default function NavDrawer({
 
   return (
     <>
-      {/* overlay */}
       <div
         aria-hidden
-        className={`fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm transition-opacity
-          ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        className={`fixed inset-0 z-[80] bg-black/65 backdrop-blur-sm transition-opacity ${
+          open
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
+        }`}
         onClick={onClose}
       />
 
-      {/* панель */}
       <aside
         role="dialog"
-        aria-label="Навигация"
-        className={`fixed left-0 top-0 z-[61] h-full w-[360px] max-w-[85vw]
-          border-r border-white/10 bg-zinc-950/95 text-white
-          transition-transform duration-300
-          ${open ? "translate-x-0" : "-translate-x-full"}`}
+        aria-modal="true"
+        aria-label="NEXUS navigation"
+        className={`fixed left-0 top-0 z-[81] flex h-dvh w-[350px] max-w-[88vw] flex-col border-r border-white/[0.08] bg-[#090a0e]/98 text-white shadow-[30px_0_90px_rgba(0,0,0,.42)] backdrop-blur-xl transition-transform duration-300 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
       >
-        {/* шапка */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-white/15">★</span>
-            <span className="text-[15px] font-semibold text-white">Навигация</span>
-          </div>
-          <button
+        <header className="flex h-[78px] items-center justify-between border-b border-white/[0.07] px-5">
+          <Link
+            href={`/${detectedLocale}`}
             onClick={onClose}
-            className="rounded-lg border border-white/20 px-2 py-1 text-sm text-white/80 hover:bg-white/10"
-            aria-label="Закрыть (Esc)"
-            title="Закрыть (Esc)"
+            className="flex items-center gap-3"
           >
-            Esc
+            <span className="grid size-10 place-items-center rounded-xl border border-[#7657ff]/45 bg-[#7657ff]/10 text-sm font-bold text-[#9a87ff]">
+              N
+            </span>
+            <span>
+              <span className="block text-sm font-semibold tracking-[0.20em]">
+                NEXUS
+              </span>
+              <span className="mt-0.5 block text-[9px] font-semibold tracking-[0.32em] text-white/34">
+                ALLIANCE
+              </span>
+            </span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation"
+            title="Close navigation"
+            className="grid size-9 place-items-center rounded-xl border border-white/[0.09] bg-white/[0.025] text-sm text-white/45 transition hover:bg-white/[0.055] hover:text-white"
+          >
+            ×
           </button>
-        </div>
+        </header>
 
-        <div className="h-[calc(100%-106px)] overflow-y-auto px-3 py-3">
-          <nav className="space-y-1">
-            {/* Всегда доступна "Главная" */}
-            <div className="list-none space-y-1">
-              {A("/", "Главная")}
-            </div>
+        <div className="flex-1 overflow-y-auto px-4 py-5">
+          <div className="px-2 text-[9px] font-semibold uppercase tracking-[0.20em] text-white/24">
+            Affiliate
+          </div>
 
-            {/* Для авторизованных */}
-            {authed && (
-              <div className="mt-2 list-none space-y-1">
-                {A("/profile", "Профиль")}
-                {A("/stats", "Статистика")}
-                {A("/offers", "Офферы")}
-                {A("/offers/mine", "Мои офферы")}
-                {A("/finance", "Финансы")}
-              </div>
-            )}
-
-            {/* Админ-раздел */}
-            {authed && isAdmin && (
+          <nav className="mt-2 space-y-1">
+            {navItem("/", "Dashboard")}
+            {authed ? (
               <>
-                <div className="mt-3 select-none px-2 text-xs uppercase tracking-wide text-white/40">
-                  Администрирование
-                </div>
-                <div className="list-none space-y-1">
-                  {A("/admin/stats", "Статистика (админ)")}
-                  {A("/admin/offers/create", "Создать оффер")}
-                  {A("/admin/offers/settings", "Настройки офферов")}
-                  {A("/admin/requests", "Заявки на офферы")}
-                  {A("/admin/offers", "Офферы (админ)")}
-                  {A("/admin/registrations", "Регистрации")}
-                  {A("/admin/users", "Пользователи")}
-                  {A("/postbacks", "Постбеки")}
-                  {A("/conversions", "Конверсии")}
-                </div>
+                {navItem("/offers", "Offers")}
+                {navItem("/offers/mine", "My Offers")}
+                {navItem("/stats", "Statistics")}
+                {navItem("/finance", "Finance")}
+                {navItem("/profile", "Profile")}
               </>
-            )}
+            ) : null}
           </nav>
 
-          <div className="h-24" />
+          {authed && isAdmin ? (
+            <>
+              <div className="mx-2 my-5 h-px bg-white/[0.07]" />
+
+              <div className="px-2 text-[9px] font-semibold uppercase tracking-[0.20em] text-[#8068ff]">
+                Administration
+              </div>
+
+              <nav className="mt-2 space-y-1">
+                {navItem("/admin/stats", "Control Center")}
+                {navItem("/admin/analytics", "Network Analytics")}
+                {navItem("/admin/offers", "Offers")}
+                {navItem("/admin/requests", "Access Requests")}
+                {navItem("/admin/registrations", "Registrations")}
+                {navItem("/admin/users", "Users")}
+                {navItem("/admin/team", "Team & Roles")}
+                {navItem("/conversions", "Conversions")}
+                {navItem("/admin/payouts", "Payouts")}
+                {navItem("/postbacks", "Integrations")}
+              </nav>
+            </>
+          ) : null}
         </div>
 
-        {/* футер */}
-        <div className="sticky bottom-0 w-full border-t border-white/10 bg-zinc-950/95 px-4 py-3">
+        <footer className="border-t border-white/[0.07] bg-black/10 p-4">
           {!authed ? (
-            <div className="flex items-center justify-between gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <Link
                 href={`/${detectedLocale}/login`}
                 onClick={onClose}
-                className="rounded-md border border-white/20 px-3 py-1 text-[13px] text-white/90 hover:bg-white/10"
+                className="flex h-10 items-center justify-center rounded-xl border border-white/[0.10] bg-white/[0.025] text-xs font-semibold text-white/62 transition hover:bg-white/[0.05] hover:text-white"
               >
-                Войти
+                Sign in
               </Link>
+
               <Link
                 href={`/${detectedLocale}/register`}
                 onClick={onClose}
-                className="rounded-md border border-rose-500/40 bg-rose-500/90 px-3 py-1 text-[13px] font-semibold text-white hover:bg-rose-500"
+                className="flex h-10 items-center justify-center rounded-xl bg-[#7657ff] text-xs font-semibold text-white transition hover:bg-[#846cff]"
               >
-                Регистрация
+                Apply to join
               </Link>
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-2">
-              <div className="truncate text-[13px] text-white/80" title={email}>
-                {email}
+            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3.5">
+              <div className="min-w-0">
+                <div
+                  className="truncate text-xs font-medium text-white/72"
+                  title={email}
+                >
+                  {email}
+                </div>
+
                 {badge ? (
-                  <span className="pointer-events-none ml-2 rounded-md border border-white/15 bg-white/5 px-2 py-0.5 text-[11px] text-white/70">
+                  <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.10em] text-[#8f7aff]">
                     {badge}
-                  </span>
+                  </div>
                 ) : null}
               </div>
-              <form method="POST" action="/api/auth/signout">
-                <input type="hidden" name="callbackUrl" value={`/${detectedLocale}`} />
+
+              <form
+                method="POST"
+                action="/api/auth/signout"
+                className="mt-3 border-t border-white/[0.06] pt-3"
+              >
+                <input
+                  type="hidden"
+                  name="callbackUrl"
+                  value={`/${detectedLocale}`}
+                />
                 <button
-                  className="rounded-md border border-white/20 px-3 py-1 text-[13px] text-white/80 hover:bg-white/10"
+                  type="submit"
                   onClick={onClose}
+                  className="text-[11px] font-medium text-white/38 transition hover:text-white/70"
                 >
-                  Выйти
+                  Sign out
                 </button>
               </form>
             </div>
           )}
-        </div>
+        </footer>
       </aside>
     </>
   );

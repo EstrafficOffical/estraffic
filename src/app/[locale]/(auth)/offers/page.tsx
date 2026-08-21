@@ -269,7 +269,7 @@ export default function OffersPage() {
                       <button
                         className="h-10 rounded-xl border border-[#7357ff]/30 bg-[#7357ff]/10 px-4 text-sm font-semibold text-[#a291ff]"
                         onClick={() => {
-                          window.location.href = "./offers/mine";
+                          window.location.href = window.location.pathname.replace(/\/offers\/?$/, "/offers/mine");
                         }}
                       >
                         Open My Offers

@@ -602,3 +602,105 @@ model NexusConversion {
   @@index([termsVersionId, createdAt])
   @@index([type, status, createdAt])
 }
+
+enum NexusEarningStatus {
+  PENDING
+  AVAILABLE
+  REVERSED
+}
+
+enum NexusFinanceBucket {
+  PENDING
+  AVAILABLE
+  RESERVED
+  PAID
+}
+
+enum NexusFinanceEntryKind {
+  EARNING_CREDIT
+  RELEASE_PENDING_DEBIT
+  RELEASE_AVAILABLE_CREDIT
+  PAYOUT_RESERVE_AVAILABLE_DEBIT
+  PAYOUT_RESERVE_CREDIT
+  PAYOUT_PAID_RESERVED_DEBIT
+  PAYOUT_PAID_CREDIT
+  PAYOUT_REJECT_RESERVED_DEBIT
+  PAYOUT_REJECT_AVAILABLE_CREDIT
+  REVERSAL
+  ADMIN_ADJUSTMENT
+}
+
+enum NexusPayoutStatus {
+  REQUESTED
+  APPROVED
+  PAID
+  REJECTED
+  CANCELED
+}
+
+model NexusEarning {
+  id                String             @id @default(cuid())
+  nexusConversionId String             @unique
+  userId            String
+  flowId            String
+  termsVersionId    String?
+  amount            Decimal            @db.Decimal(12, 2)
+  currency          String             @default("USD") @db.VarChar(12)
+  status            NexusEarningStatus @default(PENDING)
+  releaseAt         DateTime?
+  availableAt       DateTime?
+  reversedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([userId, status, releaseAt])
+  @@index([flowId, createdAt])
+  @@index([termsVersionId, createdAt])
+}
+
+model NexusFinanceLedger {
+  id                String                @id @default(cuid())
+  userId            String
+  currency          String                @default("USD") @db.VarChar(12)
+  bucket            NexusFinanceBucket
+  kind              NexusFinanceEntryKind
+  amount            Decimal               @db.Decimal(12, 2)
+  nexusEarningId    String?
+  nexusConversionId String?
+  payoutId          String?
+  idempotencyKey    String                @unique @db.VarChar(191)
+  description       String?               @db.VarChar(255)
+  metadata          Json?
+  createdAt         DateTime              @default(now())
+
+  @@index([userId, currency, bucket, createdAt])
+  @@index([nexusEarningId, createdAt])
+  @@index([nexusConversionId, createdAt])
+  @@index([payoutId, createdAt])
+}
+
+model NexusPayout {
+  id                 String            @id @default(cuid())
+  userId             String
+  walletId           String?
+  amount             Decimal           @db.Decimal(12, 2)
+  currency           String            @default("USD") @db.VarChar(12)
+  status             NexusPayoutStatus @default(REQUESTED)
+  destinationLabel   String?           @db.VarChar(64)
+  destinationAddress String            @db.VarChar(255)
+  txHash             String?           @db.VarChar(255)
+  reviewedById       String?
+  note               String?           @db.Text
+  requestedAt        DateTime          @default(now())
+  approvedAt         DateTime?
+  paidAt             DateTime?
+  rejectedAt         DateTime?
+  canceledAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([userId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([walletId])
+  @@index([reviewedById, createdAt])
+}

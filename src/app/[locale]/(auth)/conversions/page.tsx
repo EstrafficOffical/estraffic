@@ -1,295 +1,537 @@
-// src/app/[locale]/(auth)/conversions/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
-import NavDrawer from "@/app/components/NavDrawer";
 
-type Conv = {
+type StaffRole = "OWNER" | "ADMIN" | "MANAGER";
+type ConvType = "REG" | "DEP" | "REBILL" | "SALE" | "LEAD";
+type ConvStatus = "PENDING" | "APPROVED" | "REJECTED" | "REVERSED";
+
+type Row = {
   id: string;
-  createdAt: string | null;
-  user: { id: string; email: string | null; name: string | null } | null;
-  offer: { id: string; title: string } | null;
-  subId: string | null;
-  amount: number | string | null;
-  currency: string | null;
-  type?: "REG" | "DEP" | "REBILL" | "SALE" | "LEAD";
-  event?: "REG" | "DEP" | "REBILL" | "SALE" | "LEAD";
-  txId: string | null;
+  createdAt: string;
+  eventAt: string | null;
+  updatedAt: string;
+  type: ConvType;
+  status: ConvStatus;
+  source: string;
+  txId: string;
+  externalId: string | null;
+  clickId: string;
+  nexusClickId: string;
+  currency: string;
+  advertiserAmount: number | null;
+  affiliatePayout: number;
+  grossMargin: number | null;
+  marginPercent: number | null;
+  user: {
+    id: string;
+    email: string | null;
+    name: string | null;
+    tier: number | null;
+  };
+  flow: {
+    id: string;
+    name: string;
+    trafficSource: string | null;
+    approach: string | null;
+    geo: string | null;
+    brand: { id: string; name: string } | null;
+  };
+  terms: {
+    id: string;
+    version: number | null;
+  } | null;
+};
+
+type Payload = {
+  role: StaffRole;
+  items: Row[];
 };
 
 const TYPES = ["ALL", "REG", "DEP", "REBILL", "SALE", "LEAD"] as const;
-type TypeFilter = (typeof TYPES)[number];
+const STATUSES = ["ALL", "APPROVED", "PENDING", "REJECTED", "REVERSED"] as const;
 
-function fmtDate(iso: string | null | undefined) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleString();
-}
-function fmtMoney(n: number | string | null | undefined) {
-  const num = Number(n);
-  if (!isFinite(num)) return "—";
-  return "$" + num.toFixed(2);
+function money(value: number | null | undefined, currency = "USD") {
+  if (value == null || !Number.isFinite(Number(value))) return "-";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(Number(value));
 }
 
-export default function ConversionsPage() {
-  const pathname = usePathname();
-  const locale = (pathname?.split("/")?.[1] || "ru") as string;
+function dateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(d);
+}
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [rows, setRows] = useState<Conv[]>([]);
-  const [loading, setLoading] = useState(true);
+function shortId(value: string | null | undefined) {
+  if (!value) return "-";
+  return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
 
-  const [q, setQ] = useState("");
-  const [type, setType] = useState<TypeFilter>("ALL");
-  const [from, setFrom] = useState<string>("");
-  const [to, setTo] = useState<string>("");
-
-  // флаг роли — чтобы и форму теста показать только админу
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-
-  const [testOpen, setTestOpen] = useState(false);
-  const [test, setTest] = useState({
-    click_id: "",
-    offer_id: "",
-    event: "REG",
-    amount: "0",
-    currency: "USD",
-    tx_id: "",
-    secret: "",
-  });
-  const [testMsg, setTestMsg] = useState<string | null>(null);
-  const onTestChange = (k: keyof typeof test, v: string) =>
-    setTest((s) => ({ ...s, [k]: v }));
-
-  // ← ВАЖНО: на старте забираем сессию, узнаём роль и грузим список (админу — с ?all=1)
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        setLoading(true);
-
-        const sess = await fetch("/api/auth/session", { cache: "no-store" })
-          .then((r) => r.json())
-          .catch(() => ({}));
-        const admin = (sess?.user as any)?.role === "ADMIN";
-        if (alive) setIsAdmin(!!admin);
-
-        const apiUrl = admin
-          ? "/api/postbacks/conversions?all=1"
-          : "/api/postbacks/conversions";
-
-        const res = await fetch(apiUrl, { cache: "no-store" });
-        const data = (res.ok ? await res.json() : []) as Conv[];
-        if (alive) setRows(Array.isArray(data) ? data : []);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const filtered = useMemo(() => {
-    const ql = q.trim().toLowerCase();
-    const fromTs = from ? new Date(from).getTime() : 0;
-    const toTs = to ? new Date(to).getTime() + 24 * 3600 * 1000 - 1 : Number.MAX_SAFE_INTEGER;
-
-    return rows.filter((r) => {
-      const rowType = (r.type ?? r.event) as TypeFilter | undefined;
-      if (type !== "ALL" && rowType !== type) return false;
-
-      const t = r.createdAt ? new Date(r.createdAt).getTime() : NaN;
-      if (isFinite(t)) {
-        if (t < fromTs || t > toTs) return false;
-      }
-      if (!ql) return true;
-      const hay = (
-        `${r.offer?.title ?? ""} ${r.offer?.id ?? ""} ${r.user?.email ?? ""} ${r.user?.name ?? ""} ${r.subId ?? ""} ${r.txId ?? ""}`
-      ).toLowerCase();
-      return hay.includes(ql);
-    });
-  }, [rows, q, type, from, to]);
-
-  async function sendTestPostback(e: React.FormEvent) {
-    e.preventDefault();
-    setTestMsg(null);
-    const params = new URLSearchParams({
-      clickId: test.click_id,   // camelCase
-      click_id: test.click_id,  // legacy
-      offer_id: test.offer_id,
-      event: test.event,
-      amount: test.amount,
-      currency: test.currency,
-      tx_id: test.tx_id,
-    });
-    if (test.secret) params.set("secret", test.secret);
-
-    const url = "/api/postbacks/universal?source=ingest&" + params.toString();
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      if (res.ok && data?.ok) setTestMsg("✅ Отправлено: " + data.id);
-      else setTestMsg("⚠️ " + (data?.error ?? "Ошибка"));
-    } catch {
-      setTestMsg("⚠️ Сеть недоступна");
-    }
-  }
+function statusBadge(status: ConvStatus) {
+  const style =
+    status === "APPROVED"
+      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+      : status === "PENDING"
+        ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
+        : status === "REVERSED"
+          ? "border-orange-500/25 bg-orange-500/10 text-orange-300"
+          : "border-red-500/25 bg-red-500/10 text-red-300";
 
   return (
-    <section className="relative max-w-7xl mx-auto px-4 py-8 space-y-8 text-white/90">
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setMenuOpen(true)}
-          aria-label="Open navigation"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/20 border border-white/40"
-        >
-          <svg viewBox="0 0 24 24" className="w-4 h-4 text-white/80" aria-hidden>
-            <path fill="currentColor" d="M12 2l2.6 6.9H22l-5.4 3.9 2.1 6.8L12 16.7 5.3 19.6 7.4 12.8 2 8.9h7.4L12 2z" />
-          </svg>
-        </button>
-        <span className="font-semibold text-white">Estrella</span>
-      </div>
-
-      <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Conversions</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-        <div className="md:col-span-2">
-          <div className="relative">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search (offer, email, subid, txid)…"
-              className="w-full rounded-xl px-10 py-3 outline-none bg-zinc-900 text-white placeholder:text-white/50 border border-white/15 backdrop-blur-xl focus:ring-2 focus:ring-white/20"
-            />
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/60">🔎</span>
-          </div>
-        </div>
-        <select
-          value={type}
-          onChange={(e) => setType(e.target.value as TypeFilter)}
-          className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20"
-        >
-          {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-               className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20" />
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
-               className="rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-3 outline-none focus:ring-2 focus:ring-white/20" />
-      </div>
-
-      {/* тестовый постбек — только админу */}
-      {isAdmin && (
-        <div className="rounded-2xl bg-white/10 border border-white/15 backdrop-blur-xl p-4">
-          <button
-            className="text-sm text-white/80 underline underline-offset-4"
-            onClick={() => setTestOpen((v) => !v)}
-          >
-            {testOpen ? "Скрыть" : "Показать"} форму тестового постбека
-          </button>
-          {testOpen && (
-            <form onSubmit={sendTestPostback} className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input label="click_id" value={test.click_id} onChange={(v) => onTestChange("click_id", v)} />
-              <Input label="offer_id" value={test.offer_id} onChange={(v) => onTestChange("offer_id", v)} />
-              <div>
-                <label className="block text-sm mb-1 text-white/80">event</label>
-                <select
-                  value={test.event}
-                  onChange={(e) => onTestChange("event", e.target.value)}
-                  className="w-full rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-2 outline-none focus:ring-2 focus:ring-white/20"
-                >
-                  <option>REG</option>
-                  <option>DEP</option>
-                  <option>SALE</option>
-                  <option>REBILL</option>
-                  <option>LEAD</option>
-                </select>
-              </div>
-              <Input label="amount" type="number" value={test.amount} onChange={(v) => onTestChange("amount", v)} />
-              <Input label="currency" value={test.currency} onChange={(v) => onTestChange("currency", v)} />
-              <Input label="tx_id" value={test.tx_id} onChange={(v) => onTestChange("tx_id", v)} />
-              <Input label="secret" type="password" value={test.secret} onChange={(v) => onTestChange("secret", v)} />
-              <div className="md:col-span-3 flex items-center gap-3">
-                <button className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15" type="submit">
-                  Отправить тестовый постбек
-                </button>
-                {testMsg && <span className="text-sm text-white/70">{testMsg}</span>}
-              </div>
-            </form>
-          )}
-        </div>
-      )}
-
-      <div className="overflow-x-auto rounded-2xl bg-white/5 border border-white/10">
-        <table className="min-w-full text-sm">
-          <thead className="text-white/70">
-            <tr className="text-left">
-              <Th>Time</Th>
-              <Th>Offer</Th>
-              <Th>Type</Th>
-              <Th>Amount</Th>
-              <Th>Currency</Th>
-              <Th>SubID</Th>
-              <Th>TxID</Th>
-              <Th>User</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={8} className="p-6 text-white/60">Загрузка…</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="p-6 text-white/60">Пока пусто</td></tr>
-            ) : (
-              filtered.map((r) => {
-                const rowType = r.type ?? r.event ?? "—";
-                return (
-                  <tr key={r.id} className="border-t border-white/10">
-                    <Td>{fmtDate(r.createdAt)}</Td>
-                    <Td>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{r.offer?.title ?? "—"}</span>
-                        <span className="text-white/50 text-xs">{r.offer?.id}</span>
-                      </div>
-                    </Td>
-                    <Td><Badge>{rowType}</Badge></Td>
-                    <Td>{fmtMoney(r.amount)}</Td>
-                    <Td>{r.currency ?? "—"}</Td>
-                    <Td className="font-mono">{r.subId ?? "—"}</Td>
-                    <Td className="font-mono">{r.txId ?? "—"}</Td>
-                    <Td>{r.user?.email ?? r.user?.name ?? "—"}</Td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} locale={locale} />
-    </section>
+    <span
+      className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${style}`}
+    >
+      {status}
+    </span>
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-4 py-3 font-semibold">{children}</th>;
-}
-function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-4 py-3 ${className ?? ""}`}>{children}</td>;
-}
-function Badge({ children }: { children: React.ReactNode }) {
-  return <span className="inline-flex items-center rounded-lg px-2 py-1 text-xs bg-white/10 border border-white/15">{children}</span>;
-}
-function Input(props: { label: string; value: string; onChange: (v: string) => void; type?: string; }) {
+function typeBadge(type: ConvType) {
   return (
-    <div>
-      <label className="block text-sm mb-1 text-white/80">{props.label}</label>
-      <input
-        type={props.type ?? "text"}
-        value={props.value}
-        onChange={(e) => props.onChange(e.target.value)}
-        className="w-full rounded-xl bg-zinc-900 text-white border border-white/15 px-3 py-2 outline-none focus:ring-2 focus:ring-white/20 placeholder:text-white/40"
-      />
+    <span className="inline-flex rounded-md border border-[#7657ff]/25 bg-[#7657ff]/10 px-2 py-1 text-[10px] font-semibold text-[#9a87ff]">
+      {type === "DEP" ? "FTD / DEP" : type}
+    </span>
+  );
+}
+
+export default function ConversionsPage() {
+  const [payload, setPayload] = useState<Payload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [query, setQuery] = useState("");
+  const [type, setType] = useState<(typeof TYPES)[number]>("ALL");
+  const [status, setStatus] = useState<(typeof STATUSES)[number]>("ALL");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+
+    const res = await fetch("/api/admin/nexus/conversions", {
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      setPayload(null);
+      setError(data?.error || "Failed to load NEXUS conversions");
+      setLoading(false);
+      return;
+    }
+
+    setPayload(data as Payload);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const showInternal =
+    payload?.role === "OWNER" || payload?.role === "ADMIN";
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+
+    const fromTs = from
+      ? new Date(`${from}T00:00:00Z`).getTime()
+      : Number.NEGATIVE_INFINITY;
+    const toTs = to
+      ? new Date(`${to}T23:59:59.999Z`).getTime()
+      : Number.POSITIVE_INFINITY;
+
+    return (payload?.items ?? []).filter((row) => {
+      if (type !== "ALL" && row.type !== type) return false;
+      if (status !== "ALL" && row.status !== status) return false;
+
+      const ts = new Date(row.createdAt).getTime();
+      if (Number.isFinite(ts) && (ts < fromTs || ts > toTs)) return false;
+
+      if (!q) return true;
+
+      const haystack = [
+        row.flow.brand?.name ?? "",
+        row.flow.name,
+        row.flow.geo ?? "",
+        row.flow.trafficSource ?? "",
+        row.user.email ?? "",
+        row.user.name ?? "",
+        row.txId,
+        row.clickId,
+        row.source,
+        row.terms?.version == null ? "" : `v${row.terms.version}`,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+  }, [payload, query, type, status, from, to]);
+
+  const metrics = useMemo(() => {
+    const approved = filtered.filter((row) => row.status === "APPROVED");
+    const approvedFtd = approved.filter((row) => row.type === "DEP");
+
+    const advertiserRevenue = approved.reduce(
+      (sum, row) => sum + Number(row.advertiserAmount ?? 0),
+      0,
+    );
+    const affiliatePayouts = approved.reduce(
+      (sum, row) => sum + Number(row.affiliatePayout ?? 0),
+      0,
+    );
+    const grossMargin = advertiserRevenue - affiliatePayouts;
+    const marginPercent =
+      advertiserRevenue > 0 ? (grossMargin / advertiserRevenue) * 100 : 0;
+
+    return {
+      conversions: filtered.length,
+      approvedFtd: approvedFtd.length,
+      advertiserRevenue,
+      affiliatePayouts,
+      grossMargin,
+      marginPercent,
+    };
+  }, [filtered]);
+
+  return (
+    <div className="min-h-screen bg-[#08090d] text-white">
+      <div className="mx-auto w-full max-w-[1600px] px-5 py-8 md:px-8 lg:px-10">
+        <header className="mb-7 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8068ff]">
+              Internal operations
+            </div>
+            <h1 className="mt-2 text-4xl font-semibold tracking-[-0.035em]">
+              Conversions
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-white/40">
+              Live NEXUS attribution, conversion status and frozen commercial economics.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {payload?.role && (
+              <span className="rounded-full border border-white/10 bg-white/[0.035] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                {payload.role}
+              </span>
+            )}
+            <button
+              onClick={() => void load()}
+              className="h-10 rounded-xl border border-white/10 bg-white/[0.035] px-4 text-xs font-semibold text-white/70 transition hover:bg-white/[0.06]"
+            >
+              Refresh
+            </button>
+          </div>
+        </header>
+
+        {error && (
+          <div className="mb-5 rounded-xl border border-red-500/25 bg-red-500/[0.08] px-4 py-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        <section
+          className={`mb-5 grid gap-3 sm:grid-cols-2 ${
+            showInternal ? "xl:grid-cols-6" : "xl:grid-cols-3"
+          }`}
+        >
+          <Metric label="Conversions" value={metrics.conversions.toLocaleString("en-US")} />
+          <Metric label="Approved FTD" value={metrics.approvedFtd.toLocaleString("en-US")} />
+
+          {showInternal && (
+            <>
+              <Metric
+                label="Network revenue"
+                value={money(metrics.advertiserRevenue)}
+                emphasis
+              />
+              <Metric
+                label="Affiliate payouts"
+                value={money(metrics.affiliatePayouts)}
+              />
+              <Metric
+                label="Gross margin"
+                value={money(metrics.grossMargin)}
+                positive={metrics.grossMargin > 0}
+              />
+              <Metric
+                label="Margin"
+                value={`${metrics.marginPercent.toFixed(2)}%`}
+              />
+            </>
+          )}
+        </section>
+
+        <section className="mb-5 rounded-2xl border border-white/[0.08] bg-[#0d0f14] p-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_170px_180px_160px_160px_auto]">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search brand, flow, affiliate, click ID, TX ID..."
+              className="h-10 rounded-xl border border-white/10 bg-[#090b10] px-3 text-xs text-white outline-none placeholder:text-white/25 focus:border-[#7357ff]/60"
+            />
+
+            <select
+              value={type}
+              onChange={(e) =>
+                setType(e.target.value as (typeof TYPES)[number])
+              }
+              className="h-10 rounded-xl border border-white/10 bg-[#090b10] px-3 text-xs text-white/75 outline-none"
+            >
+              {TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {value === "DEP" ? "FTD / DEP" : value}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={status}
+              onChange={(e) =>
+                setStatus(e.target.value as (typeof STATUSES)[number])
+              }
+              className="h-10 rounded-xl border border-white/10 bg-[#090b10] px-3 text-xs text-white/75 outline-none"
+            >
+              {STATUSES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="h-10 rounded-xl border border-white/10 bg-[#090b10] px-3 text-xs text-white/65 outline-none"
+            />
+
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="h-10 rounded-xl border border-white/10 bg-[#090b10] px-3 text-xs text-white/65 outline-none"
+            />
+
+            <button
+              onClick={() => {
+                setQuery("");
+                setType("ALL");
+                setStatus("ALL");
+                setFrom("");
+                setTo("");
+              }}
+              className="h-10 rounded-xl border border-white/10 bg-white/[0.025] px-4 text-xs font-semibold text-white/55 hover:bg-white/[0.05]"
+            >
+              Reset
+            </button>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0d0f14]">
+          {loading ? (
+            <div className="px-6 py-16 text-center text-sm text-white/35">
+              Loading live NEXUS conversions...
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="px-6 py-16 text-center text-sm text-white/35">
+              No conversions match these filters.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table
+                className={`w-full text-left text-xs ${
+                  showInternal ? "min-w-[1500px]" : "min-w-[1050px]"
+                }`}
+              >
+                <thead className="border-b border-white/[0.07] bg-black/10 text-[9px] uppercase tracking-[0.14em] text-white/30">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Time</th>
+                    <th className="px-4 py-3 font-semibold">Brand / Flow</th>
+                    <th className="px-4 py-3 font-semibold">Event</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    {showInternal && (
+                      <th className="px-4 py-3 font-semibold">Advertiser</th>
+                    )}
+                    <th className="px-4 py-3 font-semibold">Affiliate</th>
+                    {showInternal && (
+                      <th className="px-4 py-3 font-semibold">Margin</th>
+                    )}
+                    <th className="px-4 py-3 font-semibold">Affiliate</th>
+                    <th className="px-4 py-3 font-semibold">Terms</th>
+                    <th className="px-4 py-3 font-semibold">Source / TX</th>
+                    <th className="px-4 py-3 font-semibold">Click ID</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-white/[0.055]">
+                  {filtered.map((row) => (
+                    <tr
+                      key={row.id}
+                      className="align-top text-white/62 transition hover:bg-white/[0.018]"
+                    >
+                      <td className="px-4 py-4">
+                        <div className="whitespace-nowrap text-white/72">
+                          {dateTime(row.createdAt)}
+                        </div>
+                        {row.eventAt && (
+                          <div className="mt-1 text-[10px] text-white/25">
+                            Event {dateTime(row.eventAt)}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-white/85">
+                          {row.flow.brand?.name ?? "Unknown brand"}
+                          <span className="mx-1.5 text-white/20">/</span>
+                          {row.flow.name}
+                        </div>
+                        <div className="mt-1 text-[10px] text-white/30">
+                          {[row.flow.geo, row.flow.trafficSource, row.flow.approach]
+                            .filter(Boolean)
+                            .join(" / ") || row.flow.id}
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">{typeBadge(row.type)}</td>
+
+                      <td className="px-4 py-4">{statusBadge(row.status)}</td>
+
+                      {showInternal && (
+                        <td className="px-4 py-4 font-semibold text-white/85">
+                          {money(row.advertiserAmount, row.currency)}
+                        </td>
+                      )}
+
+                      <td className="px-4 py-4 font-semibold text-white/85">
+                        {money(row.affiliatePayout, row.currency)}
+                      </td>
+
+                      {showInternal && (
+                        <td className="px-4 py-4">
+                          <div
+                            className={
+                              Number(row.grossMargin ?? 0) > 0
+                                ? "font-semibold text-emerald-300"
+                                : "font-semibold text-white/65"
+                            }
+                          >
+                            {money(row.grossMargin, row.currency)}
+                          </div>
+                          <div className="mt-1 text-[10px] text-white/28">
+                            {row.marginPercent == null
+                              ? "-"
+                              : `${row.marginPercent.toFixed(2)}%`}
+                          </div>
+                        </td>
+                      )}
+
+                      <td className="px-4 py-4">
+                        <div className="font-medium text-white/78">
+                          {row.user.email || row.user.name || row.user.id}
+                        </div>
+                        <div className="mt-1 text-[10px] text-white/28">
+                          {row.user.tier == null ? "" : `Tier ${row.user.tier}`}
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-[#9a87ff]">
+                          {row.terms?.version == null
+                            ? "-"
+                            : `v${row.terms.version}`}
+                        </div>
+                        <div className="mt-1 font-mono text-[10px] text-white/22">
+                          {row.terms ? shortId(row.terms.id) : ""}
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-white/72">
+                          {row.source}
+                        </div>
+                        <div
+                          className="mt-1 font-mono text-[10px] text-white/30"
+                          title={row.txId}
+                        >
+                          {shortId(row.txId)}
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <div
+                          className="font-mono text-[10px] text-white/38"
+                          title={row.clickId}
+                        >
+                          {shortId(row.clickId)}
+                        </div>
+                        <div
+                          className="mt-1 font-mono text-[10px] text-white/20"
+                          title={row.id}
+                        >
+                          conv {shortId(row.id)}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {payload?.role === "MANAGER" && (
+          <div className="mt-4 rounded-xl border border-amber-500/15 bg-amber-500/[0.045] px-4 py-3 text-xs leading-5 text-amber-200/65">
+            MANAGER view hides advertiser revenue and network margin. OWNER or ADMIN access is required for internal economics.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  emphasis = false,
+  positive = false,
+}: {
+  label: string;
+  value: string;
+  emphasis?: boolean;
+  positive?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 ${
+        emphasis
+          ? "border-[#7657ff]/25 bg-[#7657ff]/[0.065]"
+          : "border-white/[0.08] bg-[#0d0f14]"
+      }`}
+    >
+      <div className="text-[9px] font-semibold uppercase tracking-[0.16em] text-white/32">
+        {label}
+      </div>
+      <div
+        className={`mt-3 text-[24px] font-semibold tracking-[-0.025em] ${
+          positive ? "text-emerald-300" : "text-white"
+        }`}
+      >
+        {value}
+      </div>
+      <div className="mt-2 text-[10px] text-white/24">Live NEXUS data</div>
     </div>
   );
 }
