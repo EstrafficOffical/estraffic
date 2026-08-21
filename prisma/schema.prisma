@@ -61,6 +61,47 @@ enum ConversionType {
   LEAD
 }
 
+enum PartnerStatus {
+  ACTIVE
+  PAUSED
+}
+
+enum BrandStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum CatalogVisibility {
+  VISIBLE
+  HIDDEN
+  PRIVATE
+}
+
+enum MarketStatus {
+  ACTIVE
+  PAUSED
+}
+
+enum FlowStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum FlowAccessMode {
+  OPEN
+  APPROVAL_REQUIRED
+  PRIVATE
+}
+
+enum FlowAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
 model User {
   id                String     @id @default(cuid())
   email             String     @unique
@@ -80,14 +121,16 @@ model User {
   application          AffiliateApplication?  @relation("ApplicantApplication")
   reviewedApplications AffiliateApplication[] @relation("ApplicationReviewer")
 
-  wallets       Wallet[]
-  payouts       Payout[]
-  sessions      Session[]
-  accounts      Account[]
-  clicks        Click[]
-  conversions   Conversion[]
-  offerAccesses OfferAccess[]
-  offerRequests OfferRequest[]
+  flowAccesses       FlowAccess[]
+  flowAccessRequests FlowAccessRequest[]
+  wallets            Wallet[]
+  payouts            Payout[]
+  sessions           Session[]
+  accounts           Account[]
+  clicks             Click[]
+  conversions        Conversion[]
+  offerAccesses      OfferAccess[]
+  offerRequests      OfferRequest[]
 
   @@index([role])
   @@index([status])
@@ -166,12 +209,12 @@ model Offer {
   vertical String
   tier     Int      @default(3)
 
-  // legacy числовые KPI — можно не использовать
+  // legacy С‡РёСЃР»РѕРІС‹Рµ KPI вЂ” РјРѕР¶РЅРѕ РЅРµ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ
   kpi1 Float?
 
   kpi2 Float?
 
-  // НОВОЕ: текстовые KPI
+  // РќРћР’РћР•: С‚РµРєСЃС‚РѕРІС‹Рµ KPI
   kpi1Text String? @db.Text
   kpi2Text String? @db.Text
 
@@ -183,10 +226,10 @@ model Offer {
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
-  // Единая капа
+  // Р•РґРёРЅР°СЏ РєР°РїР°
   cap Int?
 
-  // Доп. инфо (legacy)
+  // Р”РѕРї. РёРЅС„Рѕ (legacy)
   minDeposit Decimal? @db.Decimal(12, 2)
   holdDays   Int?
   rules      String?  @db.Text
@@ -275,7 +318,7 @@ model Conversion {
   txId      String?
   createdAt DateTime       @default(now())
 
-  // --- НОВОЕ: безопасные доп. поля под FavBet ---
+  // --- РќРћР’РћР•: Р±РµР·РѕРїР°СЃРЅС‹Рµ РґРѕРї. РїРѕР»СЏ РїРѕРґ FavBet ---
   externalId String? @unique
   status     String?
   source     String?
@@ -290,6 +333,163 @@ model Conversion {
   @@index([offerId, createdAt])
   @@index([subId, createdAt])
   @@index([source, status])
+}
+
+model Partner {
+  id                 String        @id @default(cuid())
+  name               String        @unique
+  status             PartnerStatus @default(ACTIVE)
+  vertical           String?       @db.VarChar(191)
+  contactName        String?       @db.VarChar(191)
+  contactEmail       String?       @db.VarChar(191)
+  contactTelegram    String?       @db.VarChar(191)
+  paymentTerms       String?       @db.VarChar(191)
+  settlementCurrency String        @default("USD") @db.VarChar(12)
+  integrationType    String?       @db.VarChar(64)
+  internalNotes      String?       @db.Text
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  defaultBrands Brand[] @relation("BrandDefaultPartner")
+  flows         Flow[]  @relation("FlowPartner")
+
+  @@index([status])
+  @@index([vertical])
+}
+
+model Brand {
+  id                String            @id @default(cuid())
+  name              String            @unique
+  slug              String            @unique
+  vertical          String            @db.VarChar(191)
+  status            BrandStatus       @default(ACTIVE)
+  catalogVisibility CatalogVisibility @default(VISIBLE)
+  defaultPartnerId  String?
+  description       String?           @db.Text
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  defaultPartner Partner? @relation("BrandDefaultPartner", fields: [defaultPartnerId], references: [id], onDelete: SetNull)
+  markets        Market[]
+
+  @@index([vertical])
+  @@index([status])
+  @@index([catalogVisibility])
+  @@index([defaultPartnerId])
+}
+
+model Market {
+  id        String       @id @default(cuid())
+  brandId   String
+  geo       String       @db.VarChar(12)
+  name      String?      @db.VarChar(191)
+  status    MarketStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  brand Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  flows Flow[]
+
+  @@unique([brandId, geo])
+  @@index([geo])
+  @@index([status])
+}
+
+model Flow {
+  id               String         @id @default(cuid())
+  marketId         String
+  partnerId        String?
+  name             String         @db.VarChar(191)
+  trafficSource    String         @db.VarChar(191)
+  approach         String?        @db.VarChar(191)
+  tier             Int            @default(3)
+  status           FlowStatus     @default(ACTIVE)
+  accessMode       FlowAccessMode @default(APPROVAL_REQUIRED)
+  trackingTemplate String?        @db.Text
+  targetUrl        String?        @db.Text
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  market         Market              @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  partner        Partner?            @relation("FlowPartner", fields: [partnerId], references: [id], onDelete: SetNull)
+  termsVersions  FlowTermsVersion[]
+  accesses       FlowAccess[]
+  accessRequests FlowAccessRequest[]
+
+  @@unique([marketId, name])
+  @@index([marketId, status])
+  @@index([partnerId])
+  @@index([tier])
+  @@index([accessMode])
+}
+
+model FlowTermsVersion {
+  id                  String    @id @default(cuid())
+  flowId              String
+  version             Int
+  advertiserCpa       Decimal?  @db.Decimal(12, 2)
+  affiliateCpa        Decimal?  @db.Decimal(12, 2)
+  currency            String    @default("USD") @db.VarChar(12)
+  capFtd              Int?
+  minDeposit          Decimal?  @db.Decimal(12, 2)
+  baselineValue       Decimal?  @db.Decimal(12, 2)
+  baselineDescription String?   @db.Text
+  uniqueRdRequirement Decimal?  @db.Decimal(8, 2)
+  wagerRequirement    Decimal?  @db.Decimal(12, 2)
+  validationTiming    String?   @db.VarChar(191)
+  fraudHoldDays       Int?
+  kpiFallback         String?   @db.Text
+  notes               String?   @db.Text
+  effectiveFrom       DateTime  @default(now())
+  effectiveTo         DateTime?
+  createdAt           DateTime  @default(now())
+
+  flow     Flow         @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  accesses FlowAccess[]
+
+  @@unique([flowId, version])
+  @@index([flowId, effectiveFrom])
+}
+
+model FlowAccess {
+  id                 String           @id @default(cuid())
+  userId             String
+  flowId             String
+  termsVersionId     String?
+  status             FlowAccessStatus @default(PENDING)
+  customAffiliateCpa Decimal?         @db.Decimal(12, 2)
+  customCapFtd       Int?
+  approvedAt         DateTime?
+  rejectedAt         DateTime?
+  revokedAt          DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flow         Flow              @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  termsVersion FlowTermsVersion? @relation(fields: [termsVersionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, flowId])
+  @@index([flowId, status])
+  @@index([termsVersionId])
+}
+
+model FlowAccessRequest {
+  id          String        @id @default(cuid())
+  userId      String
+  flowId      String
+  status      RequestStatus @default(PENDING)
+  message     String?       @db.Text
+  processedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, flowId])
+  @@index([status, createdAt])
+  @@index([flowId])
 }
 
 model Wallet {
