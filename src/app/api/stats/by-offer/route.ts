@@ -34,7 +34,15 @@ export async function GET(req: Request) {
     url.searchParams.get("all") === "1" &&
     (role === "ADMIN" || role === "OWNER");
 
-  const where: any = {
+  const clickWhere: any = {
+    createdAt: {
+      gte: from,
+      lt: to,
+    },
+  };
+
+  const conversionWhere: any = {
+    status: "APPROVED",
     createdAt: {
       gte: from,
       lt: to,
@@ -42,18 +50,37 @@ export async function GET(req: Request) {
   };
 
   if (!isAll) {
-    where.userId = userId;
+    clickWhere.userId = userId;
+    conversionWhere.userId = userId;
   }
 
-  const grouped = await prisma.nexusClick.groupBy({
-    by: ["flowId"],
-    where,
-    _count: {
-      _all: true,
-    },
-  });
+  const [clickRows, conversionRows] = await Promise.all([
+    prisma.nexusClick.groupBy({
+      by: ["flowId"],
+      where: clickWhere,
+      _count: {
+        _all: true,
+      },
+    }),
 
-  const flowIds = grouped.map((row) => String(row.flowId));
+    prisma.nexusConversion.groupBy({
+      by: ["flowId", "type"],
+      where: conversionWhere,
+      _count: {
+        _all: true,
+      },
+      _sum: {
+        affiliatePayout: true,
+      },
+    }),
+  ]);
+
+  const flowIds = Array.from(
+    new Set([
+      ...clickRows.map((row) => String(row.flowId)),
+      ...conversionRows.map((row) => String(row.flowId)),
+    ]),
+  );
 
   const flows = flowIds.length
     ? await prisma.flow.findMany({
@@ -82,12 +109,49 @@ export async function GET(req: Request) {
       })
     : [];
 
-  const metaById = new Map(flows.map((flow) => [flow.id, flow]));
+  const flowMeta = new Map(flows.map((flow) => [flow.id, flow]));
+  const clicksByFlow = new Map(
+    clickRows.map((row) => [String(row.flowId), row._count._all ?? 0]),
+  );
 
-  const items = grouped.map((row) => {
+  type Acc = {
+    regs: number;
+    deps: number;
+    conversions: number;
+    revenue: number;
+  };
+
+  const conversionsByFlow = new Map<string, Acc>();
+
+  for (const row of conversionRows) {
     const flowId = String(row.flowId);
-    const clicks = row._count._all ?? 0;
-    const meta = metaById.get(flowId);
+    const acc = conversionsByFlow.get(flowId) ?? {
+      regs: 0,
+      deps: 0,
+      conversions: 0,
+      revenue: 0,
+    };
+
+    const count = row._count._all ?? 0;
+
+    acc.conversions += count;
+    acc.revenue += Number(row._sum.affiliatePayout ?? 0);
+
+    if (row.type === "REG") acc.regs += count;
+    if (row.type === "DEP") acc.deps += count;
+
+    conversionsByFlow.set(flowId, acc);
+  }
+
+  const items = flowIds.map((flowId) => {
+    const meta = flowMeta.get(flowId);
+    const clicks = clicksByFlow.get(flowId) ?? 0;
+    const acc = conversionsByFlow.get(flowId) ?? {
+      regs: 0,
+      deps: 0,
+      conversions: 0,
+      revenue: 0,
+    };
 
     const brand = meta?.market.brand.name ?? "Unknown brand";
     const flowName = meta?.name ?? flowId;
@@ -95,26 +159,36 @@ export async function GET(req: Request) {
     const trafficSource = meta?.trafficSource ?? "";
 
     return {
+      // Frontend compatibility: this is a flow ID, despite the legacy key name.
       offerId: flowId,
       title: `${brand} · ${flowName}`,
       tag: [geo, trafficSource].filter(Boolean).join(" · ") || null,
       clicks,
-      conversions: 0,
-      revenue: 0,
-      epc: 0,
-      cr: 0,
-      regs: 0,
-      deps: 0,
+      conversions: acc.conversions,
+      revenue: acc.revenue,
+      epc: clicks > 0 ? acc.revenue / clicks : 0,
+      cr: clicks > 0 ? acc.conversions / clicks : 0,
+      regs: acc.regs,
+      deps: acc.deps,
     };
   });
 
-  items.sort((a, b) => b.clicks - a.clicks);
+  items.sort(
+    (a, b) =>
+      b.revenue - a.revenue ||
+      b.conversions - a.conversions ||
+      b.clicks - a.clicks,
+  );
 
   const top = items.slice(0, limit);
 
   const totals = top.reduce(
     (acc, item) => {
       acc.clicks += item.clicks;
+      acc.conversions += item.conversions;
+      acc.revenue += item.revenue;
+      acc.regs += item.regs;
+      acc.deps += item.deps;
       return acc;
     },
     {
@@ -132,6 +206,6 @@ export async function GET(req: Request) {
     items: top,
     totals,
     scope: isAll ? "ALL" : "OWN",
-    source: "NexusClick",
+    source: "NexusClick+NexusConversion",
   });
 }

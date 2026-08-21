@@ -4,20 +4,46 @@ import prisma from "@/lib/prisma";
 import { requireApproved } from "@/lib/api-guards";
 
 function startOfDay(d: Date) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  return new Date(
+    Date.UTC(
+      d.getUTCFullYear(),
+      d.getUTCMonth(),
+      d.getUTCDate(),
+    ),
+  );
 }
+
 function addDays(d: Date, n: number) {
   const x = new Date(d.getTime());
   x.setUTCDate(x.getUTCDate() + n);
   return x;
 }
+
 function parseRange(url: URL) {
-  const to = url.searchParams.get("to") ? new Date(url.searchParams.get("to")!) : new Date();
+  const to = url.searchParams.get("to")
+    ? new Date(url.searchParams.get("to")!)
+    : new Date();
+
   const from = url.searchParams.get("from")
     ? new Date(url.searchParams.get("from")!)
     : new Date(to.getTime() - 7 * 24 * 3600 * 1000);
-  // округлим по полночь UTC для сетки
-  return { from: startOfDay(from), to: startOfDay(addDays(to, 1)) }; // [from, to)
+
+  return {
+    from: startOfDay(from),
+    to: startOfDay(addDays(to, 1)),
+  };
+}
+
+function dayKey(d: Date) {
+  return new Date(
+    Date.UTC(
+      d.getUTCFullYear(),
+      d.getUTCMonth(),
+      d.getUTCDate(),
+    ),
+  )
+    .toISOString()
+    .slice(0, 10);
 }
 
 export async function GET(req: Request) {
@@ -26,50 +52,100 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const { from, to } = parseRange(url);
-  const userId = (session!.user as any).id as string;
+  const userId = String((session!.user as any).id);
 
-  // Вытащим сырые данные (по дням) отдельными запросами и сведём
-  const clicks = await prisma.nexusClick.groupBy({
-    by: ["createdAt"],
-    where: { userId, createdAt: { gte: from, lt: to } },
-    _count: { _all: true },
-  }).catch(() => []) as any[];
+  const [clickRows, conversionRows] = await Promise.all([
+    prisma.nexusClick
+      .groupBy({
+        by: ["createdAt"],
+        where: {
+          userId,
+          createdAt: {
+            gte: from,
+            lt: to,
+          },
+        },
+        _count: {
+          _all: true,
+        },
+      })
+      .catch(() => []),
 
-  const convs = await prisma.conversion.groupBy({
-    by: ["createdAt"],
-    where: { userId, createdAt: { gte: from, lt: to } },
-    _count: { _all: true },
-    _sum: { amount: true },
-  }).catch(() => []) as any[];
+    prisma.nexusConversion
+      .groupBy({
+        by: ["createdAt"],
+        where: {
+          userId,
+          status: "APPROVED",
+          createdAt: {
+            gte: from,
+            lt: to,
+          },
+        },
+        _count: {
+          _all: true,
+        },
+        _sum: {
+          affiliatePayout: true,
+        },
+      })
+      .catch(() => []),
+  ]);
 
-  // нормализуем по дням (округление к дню UTC)
-  const dayKey = (d: Date) =>
-    new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString().slice(0, 10);
+  const clickMap = new Map<string, number>();
 
-  const mapC: Record<string, number> = {};
-  for (const r of clicks) {
-    const key = dayKey(new Date(r.createdAt));
-    mapC[key] = (mapC[key] ?? 0) + (r._count?._all ?? 0);
+  for (const row of clickRows) {
+    const key = dayKey(row.createdAt);
+    clickMap.set(
+      key,
+      (clickMap.get(key) ?? 0) + (row._count._all ?? 0),
+    );
   }
-  const mapV: Record<string, { cnt: number; sum: number }> = {};
-  for (const r of convs) {
-    const key = dayKey(new Date(r.createdAt));
-    const cnt = r._count?._all ?? 0;
-    const sum = Number(r._sum?.amount ?? 0);
-    mapV[key] = { cnt: (mapV[key]?.cnt ?? 0) + cnt, sum: (mapV[key]?.sum ?? 0) + sum };
+
+  const conversionMap = new Map<
+    string,
+    {
+      conversions: number;
+      revenue: number;
+    }
+  >();
+
+  for (const row of conversionRows) {
+    const key = dayKey(row.createdAt);
+    const current = conversionMap.get(key) ?? {
+      conversions: 0,
+      revenue: 0,
+    };
+
+    current.conversions += row._count._all ?? 0;
+    current.revenue += Number(row._sum.affiliatePayout ?? 0);
+
+    conversionMap.set(key, current);
   }
 
-  // построим полный диапазон дней
-  const series: Array<{ day: string; clicks: number; conversions: number; revenue: number }> = [];
-  for (let d = new Date(from); d < to; d = addDays(d, 1)) {
-    const key = d.toISOString().slice(0, 10);
+  const series: Array<{
+    day: string;
+    clicks: number;
+    conversions: number;
+    revenue: number;
+  }> = [];
+
+  for (let day = from; day < to; day = addDays(day, 1)) {
+    const key = dayKey(day);
+    const conversion = conversionMap.get(key);
+
     series.push({
       day: key,
-      clicks: mapC[key] ?? 0,
-      conversions: mapV[key]?.cnt ?? 0,
-      revenue: mapV[key]?.sum ?? 0,
+      clicks: clickMap.get(key) ?? 0,
+      conversions: conversion?.conversions ?? 0,
+      revenue: conversion?.revenue ?? 0,
     });
   }
 
-  return NextResponse.json({ from, to, series });
+  return NextResponse.json({
+    from,
+    to,
+    series,
+    source: "NexusClick+NexusConversion",
+  });
 }
