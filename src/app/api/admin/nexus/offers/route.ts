@@ -113,10 +113,31 @@ export async function GET() {
       ...market,
       flows: market.flows.map((flow) => {
         const latest = flow.termsVersions[0] ?? null;
-        const latestTerms =
-          latest && auth.role === "MANAGER"
-            ? { ...latest, advertiserCpa: null }
-            : latest;
+        const latestTerms = latest
+          ? {
+              ...latest,
+              advertiserCpa:
+                auth.role === "MANAGER"
+                  ? null
+                  : latest.advertiserCpa == null
+                    ? null
+                    : latest.advertiserCpa.toString(),
+              affiliateCpa:
+                latest.affiliateCpa == null ? null : latest.affiliateCpa.toString(),
+              minDeposit:
+                latest.minDeposit == null ? null : latest.minDeposit.toString(),
+              baselineValue:
+                latest.baselineValue == null ? null : latest.baselineValue.toString(),
+              uniqueRdRequirement:
+                latest.uniqueRdRequirement == null
+                  ? null
+                  : latest.uniqueRdRequirement.toString(),
+              wagerRequirement:
+                latest.wagerRequirement == null
+                  ? null
+                  : latest.wagerRequirement.toString(),
+            }
+          : null;
 
         return {
           ...flow,
