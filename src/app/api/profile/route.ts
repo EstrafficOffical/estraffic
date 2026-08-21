@@ -30,6 +30,16 @@ export async function GET() {
       image: true,
       // если у тебя когда-то были проблемы с типами — можно убрать эту строку
       telegram: true,
+      role: true,
+      status: true,
+      tier: true,
+      assignedManager: { select: { name: true, email: true, telegram: true } },
+      application: {
+        select: {
+          company: true, trafficSources: true, mainGeos: true, verticalInterests: true,
+          experience: true, estimatedMonthlyVolume: true, about: true,
+        },
+      },
     },
   });
 
