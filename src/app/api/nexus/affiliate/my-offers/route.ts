@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { FlowAccessStatus } from "@prisma/client";
@@ -55,60 +56,143 @@ export async function GET() {
 
   const user = account.user;
 
-  const accesses = await prisma.flowAccess.findMany({
-    where: {
-      userId: user.id,
-      status: FlowAccessStatus.APPROVED,
-    },
-    orderBy: {
-      approvedAt: "desc",
-    },
-    include: {
-      termsVersion: true,
-      flow: {
-        include: {
-          market: {
-            include: {
-              brand: {
-                select: {
-                  name: true,
-                  vertical: true,
+  const [accesses, links] = await Promise.all([
+    prisma.flowAccess.findMany({
+      where: {
+        userId: user.id,
+        status: FlowAccessStatus.APPROVED,
+      },
+      orderBy: {
+        approvedAt: "desc",
+      },
+      include: {
+        termsVersion: true,
+        flow: {
+          include: {
+            market: {
+              include: {
+                brand: {
+                  select: {
+                    name: true,
+                    vertical: true,
+                  },
                 },
               },
             },
           },
         },
       },
+    }),
+    prisma.nexusTrackingLink.findMany({
+      where: { userId: user.id },
+      select: {
+        flowId: true,
+        token: true,
+      },
+    }),
+  ]);
+
+  const linkByFlow = new Map(links.map((link) => [link.flowId, link.token]));
+
+  const flows = accesses.map((access) => {
+    const token = linkByFlow.get(access.flow.id);
+
+    return {
+      accessId: access.id,
+      approvedAt: access.approvedAt,
+      brand: access.flow.market.brand.name,
+      vertical: access.flow.market.brand.vertical,
+      geo: access.flow.market.geo,
+      flowId: access.flow.id,
+      flowName: access.flow.name,
+      trafficSource: access.flow.trafficSource,
+      approach: access.flow.approach,
+      tier: access.flow.tier,
+      targetUrl: access.flow.targetUrl,
+      trackingTemplate: access.flow.trackingTemplate,
+      trackingPath: token ? `/r/nexus/${token}` : null,
+      terms: {
+        version: access.termsVersion?.version ?? null,
+        affiliateCpa: access.customAffiliateCpa ?? access.termsVersion?.affiliateCpa ?? null,
+        currency: access.termsVersion?.currency ?? "USD",
+        capFtd: access.customCapFtd ?? access.termsVersion?.capFtd ?? null,
+        minDeposit: access.termsVersion?.minDeposit ?? null,
+        validationTiming: access.termsVersion?.validationTiming ?? null,
+        fraudHoldDays: access.termsVersion?.fraudHoldDays ?? null,
+      },
+    };
+  });
+
+  return NextResponse.json(jsonSafe({ flows }));
+}
+
+export async function POST(request: Request) {
+  const account = await currentUser();
+  if ("error" in account) return account.error;
+
+  const user = account.user;
+
+  if (user.role !== "USER" || user.status !== "APPROVED") {
+    return NextResponse.json({ error: "Approved affiliate account required" }, { status: 403 });
+  }
+
+  const body = await request.json().catch(() => null);
+  const flowId =
+    body && typeof body === "object" && typeof (body as Record<string, unknown>).flowId === "string"
+      ? String((body as Record<string, unknown>).flowId)
+      : "";
+
+  if (!flowId) {
+    return NextResponse.json({ error: "flowId is required" }, { status: 400 });
+  }
+
+  const access = await prisma.flowAccess.findUnique({
+    where: {
+      userId_flowId: {
+        userId: user.id,
+        flowId,
+      },
+    },
+    include: {
+      flow: {
+        select: {
+          id: true,
+          status: true,
+          targetUrl: true,
+        },
+      },
     },
   });
 
-  const flows = accesses.map((access) => ({
-    accessId: access.id,
-    approvedAt: access.approvedAt,
-    brand: access.flow.market.brand.name,
-    vertical: access.flow.market.brand.vertical,
-    geo: access.flow.market.geo,
-    flowId: access.flow.id,
-    flowName: access.flow.name,
-    trafficSource: access.flow.trafficSource,
-    approach: access.flow.approach,
-    tier: access.flow.tier,
-    targetUrl: access.flow.targetUrl,
-    trackingTemplate: access.flow.trackingTemplate,
-    terms: {
-      version: access.termsVersion?.version ?? null,
-      affiliateCpa: access.customAffiliateCpa ?? access.termsVersion?.affiliateCpa ?? null,
-      currency: access.termsVersion?.currency ?? "USD",
-      capFtd: access.customCapFtd ?? access.termsVersion?.capFtd ?? null,
-      minDeposit: access.termsVersion?.minDeposit ?? null,
-      validationTiming: access.termsVersion?.validationTiming ?? null,
-      fraudHoldDays: access.termsVersion?.fraudHoldDays ?? null,
-    },
-  }));
+  if (!access || access.status !== FlowAccessStatus.APPROVED) {
+    return NextResponse.json({ error: "Approved flow access required" }, { status: 403 });
+  }
 
-  return NextResponse.json(
-    jsonSafe({
-      flows,
-    }),
-  );
+  if (access.flow.status !== "ACTIVE" || !access.flow.targetUrl) {
+    return NextResponse.json({ error: "Tracking target is not configured for this flow" }, { status: 409 });
+  }
+
+  const existing = await prisma.nexusTrackingLink.findUnique({
+    where: {
+      userId_flowId: {
+        userId: user.id,
+        flowId,
+      },
+    },
+  });
+
+  const link =
+    existing ??
+    (await prisma.nexusTrackingLink.create({
+      data: {
+        token: randomUUID().replaceAll("-", ""),
+        userId: user.id,
+        flowId,
+      },
+    }));
+
+  return NextResponse.json({
+    ok: true,
+    trackingPath: `/r/nexus/${link.token}`,
+  });
 }

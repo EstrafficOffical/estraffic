@@ -293,6 +293,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, id: created.id });
     }
 
+
+    if (action === "setTrackingTarget") {
+      const flowId = text(body.flowId);
+      const targetUrl = optionalText(body.targetUrl);
+      const trackingTemplate = optionalText(body.trackingTemplate);
+
+      if (!flowId) {
+        return NextResponse.json({ error: "flowId is required" }, { status: 400 });
+      }
+
+      if (targetUrl) {
+        try {
+          const parsed = new URL(targetUrl);
+          if (!["http:", "https:"].includes(parsed.protocol)) {
+            return NextResponse.json({ error: "Target URL must use http or https" }, { status: 400 });
+          }
+        } catch {
+          return NextResponse.json({ error: "Target URL is invalid" }, { status: 400 });
+        }
+      }
+
+      await prisma.flow.update({
+        where: { id: flowId },
+        data: {
+          targetUrl,
+          trackingTemplate,
+        },
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
     console.error("NEXUS admin offers mutation failed", error);

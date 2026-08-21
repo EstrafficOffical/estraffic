@@ -15,6 +15,7 @@ type ApprovedFlow = {
   tier: number;
   targetUrl: string | null;
   trackingTemplate: string | null;
+  trackingPath: string | null;
   terms: {
     version: number | null;
     affiliateCpa: string | null;
@@ -33,6 +34,10 @@ type Payload = {
 const card = "rounded-2xl border border-white/10 bg-[#0d0f14]";
 const input =
   "h-11 rounded-xl border border-white/10 bg-[#090b10] px-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-[#7357ff]/60";
+const primary =
+  "inline-flex h-10 items-center justify-center rounded-xl bg-[#7357ff] px-4 text-sm font-semibold text-white transition hover:bg-[#826cff] disabled:cursor-not-allowed disabled:opacity-40";
+const secondary =
+  "inline-flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.025] px-4 text-sm font-semibold text-white/75 transition hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-40";
 
 function money(value: string | null, currency = "USD") {
   if (!value) return "-";
@@ -51,6 +56,8 @@ export default function MyOffersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [busyFlowId, setBusyFlowId] = useState<string | null>(null);
+  const [copiedFlowId, setCopiedFlowId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -95,6 +102,39 @@ export default function MyOffersPage() {
     );
   }, [data, search]);
 
+  function absoluteTrackingUrl(path: string) {
+    if (typeof window === "undefined") return path;
+    return `${window.location.origin}${path}`;
+  }
+
+  async function generateTrackingLink(flowId: string) {
+    setBusyFlowId(flowId);
+    setError("");
+
+    const response = await fetch("/api/nexus/affiliate/my-offers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flowId }),
+    });
+    const json = await response.json().catch(() => ({}));
+    setBusyFlowId(null);
+
+    if (!response.ok) {
+      setError(json?.error || "Could not generate tracking link");
+      return;
+    }
+
+    await load();
+  }
+
+  async function copyTrackingLink(flow: ApprovedFlow) {
+    if (!flow.trackingPath) return;
+    const value = absoluteTrackingUrl(flow.trackingPath);
+    await navigator.clipboard.writeText(value);
+    setCopiedFlowId(flow.flowId);
+    window.setTimeout(() => setCopiedFlowId(null), 1400);
+  }
+
   return (
     <div className="min-h-screen bg-[#08090d] text-white">
       <div className="mx-auto w-full max-w-[1500px] px-6 py-10 lg:px-10">
@@ -104,7 +144,7 @@ export default function MyOffersPage() {
           </div>
           <h1 className="text-4xl font-semibold tracking-[-0.04em]">My Offers</h1>
           <p className="mt-3 text-sm text-white/45">
-            Approved NEXUS flows with the commercial terms version frozen at approval time.
+            Approved NEXUS flows with frozen commercial terms and live tracking-link generation.
           </p>
         </div>
 
@@ -118,7 +158,7 @@ export default function MyOffersPage() {
           <Metric label="Approved flows" value={String(data?.flows.length ?? 0)} />
           <Metric
             label="Tracking ready"
-            value={String((data?.flows ?? []).filter((flow) => flow.targetUrl || flow.trackingTemplate).length)}
+            value={String((data?.flows ?? []).filter((flow) => flow.trackingPath).length)}
           />
           <Metric label="Catalog source" value="Live DB" />
         </div>
@@ -207,25 +247,58 @@ export default function MyOffersPage() {
                   />
                 </div>
 
-                <div className="border-t border-white/8 px-5 py-4">
-                  {flow.targetUrl || flow.trackingTemplate ? (
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold">Tracking configuration available</div>
-                        <div className="mt-1 text-xs text-white/35">
-                          Link generation will be wired to the NEXUS click-tracking endpoint in the next tracking step.
-                        </div>
-                      </div>
-                      <span className="rounded-full border border-[#7357ff]/25 bg-[#7357ff]/10 px-3 py-1.5 text-xs font-semibold text-[#a291ff]">
-                        Tracking ready
-                      </span>
-                    </div>
-                  ) : (
+                <div className="border-t border-white/8 px-5 py-5">
+                  {!flow.targetUrl ? (
                     <div>
                       <div className="text-sm font-semibold text-white/65">Tracking target not configured yet</div>
                       <div className="mt-1 text-xs text-white/30">
-                        Staff can configure target URL / tracking template for this flow later.
+                        Staff must configure a Target URL in Admin / Offers / Tracking before this flow can generate traffic.
                       </div>
+                    </div>
+                  ) : flow.trackingPath ? (
+                    <div>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold">Tracking link ready</div>
+                          <div className="mt-1 text-xs text-white/35">
+                            Every visit creates a unique NEXUS click_id and freezes the active access terms on the click.
+                          </div>
+                        </div>
+                        <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300">
+                          Live
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex flex-col gap-2 lg:flex-row">
+                        <input
+                          className={`${input} min-w-0 flex-1 font-mono text-xs`}
+                          readOnly
+                          value={absoluteTrackingUrl(flow.trackingPath)}
+                        />
+                        <button className={secondary} onClick={() => void copyTrackingLink(flow)}>
+                          {copiedFlowId === flow.flowId ? "Copied" : "Copy link"}
+                        </button>
+                      </div>
+
+                      <div className="mt-3 text-xs leading-5 text-white/30">
+                        Optional attribution params: ?sub1=publisherA&amp;sub2=placement&amp;campaign=summer&amp;adset=set1&amp;creative=video1
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">Tracking destination configured</div>
+                        <div className="mt-1 text-xs text-white/35">
+                          Generate one stable affiliate link for this approved flow.
+                        </div>
+                      </div>
+                      <button
+                        className={primary}
+                        disabled={busyFlowId === flow.flowId}
+                        onClick={() => void generateTrackingLink(flow.flowId)}
+                      >
+                        {busyFlowId === flow.flowId ? "Generating..." : "Generate tracking link"}
+                      </button>
                     </div>
                   )}
                 </div>

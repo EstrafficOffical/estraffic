@@ -521,3 +521,44 @@ model Payout {
 
   @@index([userId, createdAt])
 }
+
+model NexusTrackingLink {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  flowId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, flowId])
+  @@index([flowId])
+  @@index([userId, createdAt])
+}
+
+model NexusClick {
+  id             String   @id @default(cuid())
+  clickId        String   @unique
+  trackingLinkId String
+  userId         String
+  flowId         String
+  termsVersionId String?
+  sub1           String?  @db.VarChar(191)
+  sub2           String?  @db.VarChar(191)
+  sub3           String?  @db.VarChar(191)
+  sub4           String?  @db.VarChar(191)
+  sub5           String?  @db.VarChar(191)
+  source         String?  @db.VarChar(191)
+  campaign       String?  @db.VarChar(191)
+  adset          String?  @db.VarChar(191)
+  creative       String?  @db.VarChar(191)
+  ip             String?  @db.VarChar(191)
+  userAgent      String?  @db.Text
+  referer        String?  @db.Text
+  destinationUrl String?  @db.Text
+  createdAt      DateTime @default(now())
+
+  @@index([trackingLinkId, createdAt])
+  @@index([userId, createdAt])
+  @@index([flowId, createdAt])
+  @@index([termsVersionId, createdAt])
+}

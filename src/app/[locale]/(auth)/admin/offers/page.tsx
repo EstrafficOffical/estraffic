@@ -127,6 +127,7 @@ export default function AdminOffersPage() {
   const [marketForBrand, setMarketForBrand] = useState<string | null>(null);
   const [flowForMarket, setFlowForMarket] = useState<string | null>(null);
   const [termsForFlow, setTermsForFlow] = useState<string | null>(null);
+  const [trackingForFlow, setTrackingForFlow] = useState<string | null>(null);
 
   const writable = data?.role === "OWNER" || data?.role === "ADMIN";
   const showInternal = writable;
@@ -453,12 +454,20 @@ export default function AdminOffersPage() {
                                                 {flow.latestTerms ? `v${flow.latestTerms.version}` : "No terms"}
                                               </div>
                                               {writable && (
-                                                <button
-                                                  className="mt-2 text-xs font-semibold text-[#8b76ff] hover:text-[#a291ff]"
-                                                  onClick={() => setTermsForFlow(termsForFlow === flow.id ? null : flow.id)}
-                                                >
-                                                  + New terms version
-                                                </button>
+                                                <div className="mt-2 flex flex-col items-start gap-1">
+                                                  <button
+                                                    className="text-xs font-semibold text-[#8b76ff] hover:text-[#a291ff]"
+                                                    onClick={() => setTermsForFlow(termsForFlow === flow.id ? null : flow.id)}
+                                                  >
+                                                    + New terms version
+                                                  </button>
+                                                  <button
+                                                    className="text-xs font-semibold text-[#8b76ff] hover:text-[#a291ff]"
+                                                    onClick={() => setTrackingForFlow(trackingForFlow === flow.id ? null : flow.id)}
+                                                  >
+                                                    + Tracking
+                                                  </button>
+                                                </div>
                                               )}
                                             </td>
                                           </tr>
@@ -477,6 +486,22 @@ export default function AdminOffersPage() {
                                           onSubmit={async (payload) => {
                                             const ok = await mutate({ action: "addTermsVersion", flowId: flow.id, ...payload });
                                             if (ok) setTermsForFlow(null);
+                                          }}
+                                        />
+                                      </div>
+                                    ) : null,
+                                  )}
+
+                                  {market.flows.map((flow) =>
+                                    trackingForFlow === flow.id && writable ? (
+                                      <div key={`${flow.id}-tracking`} className="border-t border-white/8 p-4">
+                                        <TrackingForm
+                                          flow={flow}
+                                          busy={busy}
+                                          onCancel={() => setTrackingForFlow(null)}
+                                          onSubmit={async (payload) => {
+                                            const ok = await mutate({ action: "setTrackingTarget", flowId: flow.id, ...payload });
+                                            if (ok) setTrackingForFlow(null);
                                           }}
                                         />
                                       </div>
@@ -1036,6 +1061,72 @@ function AddFlowForm({
       <div className="flex gap-2">
         <button className={shell.button} disabled={busy}>Create flow</button>
         <button type="button" className={shell.secondary} onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function TrackingForm({
+  flow,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  flow: Flow;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (payload: Record<string, unknown>) => Promise<void>;
+}) {
+  const [targetUrl, setTargetUrl] = useState(flow.targetUrl ?? "");
+  const [trackingTemplate, setTrackingTemplate] = useState(flow.trackingTemplate ?? "");
+
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        await onSubmit({
+          targetUrl: targetUrl.trim() || null,
+          trackingTemplate: trackingTemplate.trim() || null,
+        });
+      }}
+    >
+      <div>
+        <div className="text-sm font-semibold">Tracking destination</div>
+        <div className="mt-1 text-xs leading-5 text-white/35">
+          Target URL is the advertiser landing URL. NEXUS adds click_id automatically and also supports
+          placeholders such as {"{click_id}"}, {"{sub1}"}, {"{userId}"} and {"{flowId}"}.
+        </div>
+      </div>
+
+      <label className="grid gap-2 text-xs text-white/45">
+        Target URL
+        <input
+          className={shell.input}
+          type="url"
+          placeholder="https://advertiser.example/landing?cid={click_id}"
+          value={targetUrl}
+          onChange={(e) => setTargetUrl(e.target.value)}
+        />
+      </label>
+
+      <label className="grid gap-2 text-xs text-white/45">
+        Tracking template (optional, reserved for partner-specific mapping)
+        <textarea
+          className={`${shell.input} min-h-24 py-3`}
+          placeholder="Optional internal template / mapping notes"
+          value={trackingTemplate}
+          onChange={(e) => setTrackingTemplate(e.target.value)}
+        />
+      </label>
+
+      <div className="flex gap-2">
+        <button className={shell.button} disabled={busy}>
+          {busy ? "Saving..." : "Save tracking"}
+        </button>
+        <button type="button" className={shell.secondary} onClick={onCancel}>
+          Cancel
+        </button>
       </div>
     </form>
   );
