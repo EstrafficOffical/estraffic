@@ -6,11 +6,9 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
-/** Строковые типы под схему */
 type Role = "USER" | "MANAGER" | "ADMIN" | "OWNER";
 type UserStatus = "PENDING" | "APPROVED" | "SUSPENDED" | "BANNED";
 
-/** Augmentation next-auth */
 declare module "next-auth" {
   interface User {
     id: string;
@@ -19,7 +17,9 @@ declare module "next-auth" {
     name?: string | null;
     email?: string | null;
     image?: string | null;
+    tier?: number;
   }
+
   interface Session {
     user: {
       id: string;
@@ -32,6 +32,7 @@ declare module "next-auth" {
     };
   }
 }
+
 declare module "next-auth/jwt" {
   interface JWT {
     id?: string;
@@ -44,13 +45,71 @@ declare module "next-auth/jwt" {
   }
 }
 
+const credentialsProvider = Credentials({
+  name: "Email & Password",
+  credentials: {
+    email: { label: "Email", type: "email" },
+    password: { label: "Password", type: "password" },
+  },
+
+  async authorize(creds) {
+    try {
+      const email = (creds?.email ?? "").trim().toLowerCase();
+      const password = creds?.password ?? "";
+
+      if (!email || !password) return null;
+
+      const user = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (!user?.passwordHash) return null;
+      if (user.status !== "APPROVED") return null;
+
+      const ok = await bcrypt.compare(password, user.passwordHash);
+      if (!ok) return null;
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        image: user.image ?? null,
+        role: user.role as Role,
+        status: user.status as UserStatus,
+        tier: user.tier ?? 3,
+      } as any;
+    } catch (error) {
+      console.error("[AUTH] credentials authorize failed", error);
+      return null;
+    }
+  },
+});
+
+const providers: NextAuthOptions["providers"] = [credentialsProvider];
+
+// Google auth stays OFF until explicitly enabled. This avoids accidental
+// auto-linking / account creation while NEXUS uses approval-gated accounts.
+if (
+  process.env.ENABLE_GOOGLE_AUTH === "true" &&
+  process.env.GOOGLE_CLIENT_ID &&
+  process.env.GOOGLE_CLIENT_SECRET
+) {
+  providers.unshift(
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      // Intentionally no allowDangerousEmailAccountLinking.
+    }),
+  );
+}
+
 export const authOptions: NextAuthOptions = {
-  // 🔹 Если используешь только Credentials — PrismaAdapter можно убрать
   adapter: PrismaAdapter(prisma) as any,
 
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 дней
+    // Shorter production session window than the old 30-day token.
+    maxAge: 12 * 60 * 60,
   },
 
   secret: process.env.NEXTAUTH_SECRET,
@@ -62,7 +121,7 @@ export const authOptions: NextAuthOptions = {
           ? "__Secure-next-auth.session-token"
           : "next-auth.session-token",
       options: {
-        domain: process.env.COOKIE_DOMAIN || undefined,
+        // Host-only cookie: do not broaden auth cookies to sibling subdomains.
         httpOnly: true,
         sameSite: "lax",
         path: "/",
@@ -76,53 +135,31 @@ export const authOptions: NextAuthOptions = {
     error: "/ru/login",
   },
 
-  providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-      allowDangerousEmailAccountLinking: true,
-    }),
-
-    Credentials({
-      name: "Email & Password",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(creds) {
-        try {
-          const email = (creds?.email ?? "").trim().toLowerCase();
-          const password = creds?.password ?? "";
-          if (!email || !password) return null;
-
-          const user = await prisma.user.findUnique({ where: { email } });
-          if (!user?.passwordHash) return null;
-
-          const status = (user as any).status as UserStatus | undefined;
-          // Only approved accounts can create a platform session.
-          if (status !== "APPROVED") return null;
-
-          const ok = await bcrypt.compare(password, user.passwordHash);
-          if (!ok) return null;
-
-          return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            image: user.image ?? null,
-            role: ((user as any).role ?? "USER") as Role,
-            status: ((user as any).status ?? "PENDING") as UserStatus,
-            tier: (user as any).tier ?? 3,
-          } as any;
-        } catch (e) {
-          console.error("authorize error", e);
-          return null;
-        }
-      },
-    }),
-  ],
+  providers,
 
   callbacks: {
+    async signIn({ user }) {
+      // Every provider, not only Credentials, must resolve to a real
+      // pre-approved NEXUS account.
+      const email = user.email?.trim().toLowerCase();
+      if (!email) return false;
+
+      try {
+        const dbUser = await prisma.user.findUnique({
+          where: { email },
+          select: {
+            id: true,
+            status: true,
+          },
+        });
+
+        return Boolean(dbUser && dbUser.status === "APPROVED");
+      } catch (error) {
+        console.error("[AUTH] signIn approval check failed", error);
+        return false;
+      }
+    },
+
     async jwt({ token, user }) {
       if (user) {
         token.id = (user as any).id;
@@ -135,21 +172,39 @@ export const authOptions: NextAuthOptions = {
         return token;
       }
 
+      // Refresh role/status/tier from the DB whenever NextAuth refreshes JWT
+      // state, so demotions and suspensions propagate into future sessions.
       if (token.email) {
         try {
-          const u = await prisma.user.findUnique({ where: { email: token.email } });
-          if (u) {
-            token.id = u.id;
-            token.role = ((u as any).role ?? token.role) as Role;
-            token.status = ((u as any).status ?? token.status) as UserStatus;
-            token.name = u.name ?? token.name;
-            token.picture = u.image ?? token.picture;
-            token.tier = (u as any).tier ?? token.tier ?? 3;
+          const dbUser = await prisma.user.findUnique({
+            where: { email: String(token.email).toLowerCase() },
+            select: {
+              id: true,
+              role: true,
+              status: true,
+              name: true,
+              image: true,
+              tier: true,
+            },
+          });
+
+          if (dbUser) {
+            token.id = dbUser.id;
+            token.role = dbUser.role as Role;
+            token.status = dbUser.status as UserStatus;
+            token.name = dbUser.name ?? token.name;
+            token.picture = dbUser.image ?? token.picture;
+            token.tier = dbUser.tier ?? token.tier ?? 3;
+          } else {
+            token.id = "";
+            token.role = "USER";
+            token.status = "BANNED";
           }
-        } catch (e) {
-          console.error("jwt callback fetch user error", e);
+        } catch (error) {
+          console.error("[AUTH] jwt user refresh failed", error);
         }
       }
+
       return token;
     },
 
@@ -164,15 +219,21 @@ export const authOptions: NextAuthOptions = {
         status: ((token.status as UserStatus) ?? "PENDING") as UserStatus,
         tier: Number(token.tier ?? 3),
       };
+
       return session;
     },
 
     async redirect({ url, baseUrl }) {
       try {
         const target = new URL(url, baseUrl);
-        if (target.origin !== baseUrl) return `${baseUrl}/ru`;
-        const seg = (target.pathname.split("/")[1] || "ru").toLowerCase();
-        return `${baseUrl}/${seg}`;
+
+        // Only same-origin redirects are allowed, but preserve the requested
+        // deep path/query instead of collapsing everything to /ru.
+        if (target.origin !== baseUrl) {
+          return `${baseUrl}/ru`;
+        }
+
+        return target.toString();
       } catch {
         return `${baseUrl}/ru`;
       }
@@ -180,7 +241,6 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-// server helper
 export function auth() {
   return getServerSession(authOptions);
 }

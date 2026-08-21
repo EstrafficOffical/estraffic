@@ -1,46 +1,117 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import crypto from "crypto";
+
+export const dynamic = "force-dynamic";
+
+function sha256(value: string) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function trustedBaseUrl() {
+  const configured =
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000";
+
+  return configured.replace(/\/+$/, "");
+}
+
+function requestLocale(req: Request) {
+  const referer = req.headers.get("referer");
+
+  if (referer) {
+    try {
+      const parsed = new URL(referer);
+      const locale = parsed.pathname.split("/")[1]?.toLowerCase();
+      if (locale === "en" || locale === "ru") return locale;
+    } catch {
+      // Ignore malformed/untrusted Referer. It is never used as the host.
+    }
+  }
+
+  return "ru";
+}
+
+function noStore(data: Record<string, unknown>, status = 200) {
+  return NextResponse.json(data, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
+}
 
 export async function POST(req: Request) {
   try {
-    const { email } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const email = String(body?.email || "").trim().toLowerCase();
+
     if (!email) {
-      return NextResponse.json({ ok: false, error: "Email is required" }, { status: 400 });
-    }
-    const normalized = String(email).toLowerCase().trim();
-
-    // есть ли такой пользователь
-    const user = await prisma.user.findUnique({ where: { email: normalized } });
-    // даже если нет — возвращаем 200, чтобы не палить существование
-    // но токен писать не будем
-    if (!user) {
-      return NextResponse.json({ ok: true, message: "If user exists, an email was sent" });
+      return noStore({ ok: false, error: "Email is required" }, 400);
     }
 
-    // генерим токен и пишем в VerificationToken
-    const token = crypto.randomBytes(32).toString("hex");
-    const expires = new Date(Date.now() + 1000 * 60 * 60); // 1 час
+    // Generic success prevents account enumeration.
+    const generic = {
+      ok: true,
+      message: "If the account exists, password reset instructions were created.",
+    };
 
-    // чистим старые токены для этого email (опционально)
-    await prisma.verificationToken.deleteMany({ where: { identifier: normalized } });
-
-    await prisma.verificationToken.create({
-      data: {
-        identifier: normalized, // email
-        token,
-        expires,
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
       },
     });
 
-    // соберём URL
-    const origin = req.headers.get("origin") || process.env.NEXTAUTH_URL || "http://localhost:3000";
-    const resetUrl = `${origin}/en/auth/reset?token=${encodeURIComponent(token)}`;
+    if (!user) {
+      return noStore(generic);
+    }
 
-    // В ПРОДЕ — отправь письмо через почтовый сервис.
-    // В DEV — вернём ссылку прямо в ответе:
-    return NextResponse.json({ ok: true, resetUrl });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Server error" }, { status: 500 });
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = sha256(rawToken);
+    const expires = new Date(Date.now() + 30 * 60 * 1000);
+
+    await prisma.$transaction([
+      prisma.verificationToken.deleteMany({
+        where: { identifier: email },
+      }),
+      prisma.verificationToken.create({
+        data: {
+          identifier: email,
+          // Only the SHA-256 digest is stored in the database.
+          token: tokenHash,
+          expires,
+        },
+      }),
+    ]);
+
+    const locale = requestLocale(req);
+    const resetUrl =
+      `${trustedBaseUrl()}/${locale}/auth/reset?token=` +
+      encodeURIComponent(rawToken);
+
+    // Production must deliver resetUrl through a trusted email provider.
+    // Never expose the bearer reset token in the production HTTP response.
+    if (process.env.NODE_ENV === "production") {
+      // STEP 8F.2 will connect actual email delivery.
+      return noStore(generic);
+    }
+
+    return noStore({
+      ...generic,
+      devResetUrl: resetUrl,
+    });
+  } catch (error: any) {
+    console.error("[AUTH] password reset request failed", error);
+
+    return noStore(
+      {
+        ok: false,
+        error: "Server error",
+      },
+      500,
+    );
   }
 }
