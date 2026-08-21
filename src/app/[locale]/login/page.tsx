@@ -5,6 +5,11 @@ import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
+type ChallengeState = {
+  token: string;
+  expiresAt: string;
+};
+
 export default function LoginPage({
   params,
 }: {
@@ -13,47 +18,177 @@ export default function LoginPage({
   const { locale } = params;
   const qs = useSearchParams();
 
-  const [submitting, setSubmitting] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [submitting, setSubmitting] =
+    useState(false);
+  const [localError, setLocalError] =
+    useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  const [challenge, setChallenge] =
+    useState<ChallengeState | null>(null);
+  const [verificationCode, setVerificationCode] =
+    useState("");
+
+  const callbackUrl =
+    qs.get("callbackUrl") || `/${locale}`;
+
+  async function finishSignIn(
+    input: Record<string, string>,
+  ) {
+    const result = await signIn("credentials", {
+      ...input,
+      redirect: false,
+      callbackUrl,
+    });
+
+    if (!result || result.error) {
+      throw new Error(
+        result?.error || "CredentialsSignin",
+      );
+    }
+
+    window.location.assign(
+      result.url || `/${locale}`,
+    );
+  }
+
+  async function onSubmit(
+    e: React.FormEvent<HTMLFormElement>,
+  ) {
     e.preventDefault();
     setLocalError(null);
     setSubmitting(true);
 
     const fd = new FormData(e.currentTarget);
-    const email = String(fd.get("email") || "").trim();
-    const password = String(fd.get("password") || "");
+    const email = String(
+      fd.get("email") || "",
+    ).trim();
+    const password = String(
+      fd.get("password") || "",
+    );
 
     if (!email || !password) {
-      setLocalError("Enter your email and password.");
+      setLocalError(
+        "Enter your email and password.",
+      );
       setSubmitting(false);
       return;
     }
 
-    const callbackUrl = qs.get("callbackUrl") || `/${locale}`;
-
     try {
-      await signIn("credentials", {
+      const response = await fetch(
+        "/api/auth/2fa/preauth",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            password,
+          }),
+        },
+      );
+
+      const json = await response
+        .json()
+        .catch(() => ({}));
+
+      if (!response.ok) {
+        if (
+          json?.error ===
+          "TWO_FACTOR_SETUP_REQUIRED"
+        ) {
+          setLocalError(
+            "Two-factor authentication is required for this staff account. Contact the NEXUS owner before signing in.",
+          );
+        } else {
+          setLocalError(
+            "Incorrect email or password.",
+          );
+        }
+
+        setSubmitting(false);
+        return;
+      }
+
+      if (json?.requiresTwoFactor) {
+        setChallenge({
+          token: String(
+            json.challengeToken || "",
+          ),
+          expiresAt: String(
+            json.expiresAt || "",
+          ),
+        });
+        setVerificationCode("");
+        setSubmitting(false);
+        return;
+      }
+
+      await finishSignIn({
         email,
         password,
-        redirect: true,
-        callbackUrl,
       });
-    } catch {
-      setLocalError("We could not sign you in. Please try again.");
+    } catch (error) {
+      console.error(
+        "[LOGIN] first stage failed",
+        error,
+      );
+      setLocalError(
+        "We could not sign you in. Please try again.",
+      );
+      setSubmitting(false);
+    }
+  }
+
+  async function onVerify(
+    e: React.FormEvent<HTMLFormElement>,
+  ) {
+    e.preventDefault();
+
+    if (!challenge) return;
+
+    setLocalError(null);
+    setSubmitting(true);
+
+    const code = verificationCode.trim();
+
+    if (!code) {
+      setLocalError(
+        "Enter your authenticator or recovery code.",
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      await finishSignIn({
+        challengeToken: challenge.token,
+        verificationCode: code,
+      });
+    } catch (error) {
+      console.error(
+        "[LOGIN] two-factor stage failed",
+        error,
+      );
+      setLocalError(
+        "The two-factor code is invalid or the challenge expired. Try again.",
+      );
       setSubmitting(false);
     }
   }
 
   const urlError = qs.get("error");
+
   const mergedError =
     localError ||
     (urlError === "CredentialsSignin"
       ? "Incorrect email or password."
-      : urlError
-        ? "Sign-in failed. Please try again."
-        : null);
+      : urlError === "TwoFactorRequired"
+        ? "Sign in again and complete two-factor authentication."
+        : urlError
+          ? "Sign-in failed. Please try again."
+          : null);
 
   const inputClass =
     "h-12 w-full rounded-xl border border-white/[0.10] bg-[#0b0c10] px-4 text-sm text-white outline-none placeholder:text-white/25 transition focus:border-[#7657ff]/60 focus:ring-2 focus:ring-[#7657ff]/12";
@@ -104,19 +239,29 @@ export default function LoginPage({
             </h1>
 
             <p className="mt-6 max-w-xl text-base leading-7 text-white/38">
-              Access approved offers, live tracking, conversion analytics and
-              finance from one performance workspace.
+              Access approved offers, live tracking,
+              conversion analytics and finance from one
+              performance workspace.
             </p>
 
             <div className="mt-10 grid max-w-xl grid-cols-3 gap-3">
-              <Feature label="Live tracking" value="Click → FTD" />
-              <Feature label="Commercial terms" value="Frozen" />
-              <Feature label="Attribution" value="S2S ready" />
+              <Feature
+                label="Live tracking"
+                value="Click → FTD"
+              />
+              <Feature
+                label="Commercial terms"
+                value="Frozen"
+              />
+              <Feature
+                label="Attribution"
+                value="S2S ready"
+              />
             </div>
 
             <div className="mt-10 border-l border-[#7657ff]/35 pl-4 text-xs leading-5 text-white/30">
-              NEXUS ALLIANCE partner access is available only to approved
-              accounts.
+              NEXUS ALLIANCE partner access is available
+              only to approved accounts.
             </div>
           </section>
 
@@ -124,89 +269,168 @@ export default function LoginPage({
             <div className="rounded-3xl border border-white/[0.09] bg-[#0d0f14]/95 p-5 shadow-[0_30px_100px_rgba(0,0,0,.55)] backdrop-blur-xl sm:p-7">
               <div className="mb-7">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.20em] text-[#8068ff]">
-                  Partner access
+                  {challenge
+                    ? "Security verification"
+                    : "Partner access"}
                 </div>
+
                 <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em]">
-                  Sign in to NEXUS
+                  {challenge
+                    ? "Verify it is you"
+                    : "Sign in to NEXUS"}
                 </h2>
+
                 <p className="mt-2 text-sm leading-6 text-white/35">
-                  Use the credentials connected to your approved NEXUS account.
+                  {challenge
+                    ? "Enter the current 6-digit authenticator code or one unused recovery code."
+                    : "Use the credentials connected to your approved NEXUS account."}
                 </p>
               </div>
 
-              <form onSubmit={onSubmit} className="space-y-4">
-                <label className="block">
-                  <div className="mb-2 text-xs font-medium text-white/55">
-                    Email
-                  </div>
-                  <input
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    className={inputClass}
-                    placeholder="you@company.com"
-                    required
-                  />
-                </label>
-
-                <label className="block">
-                  <div className="mb-2 flex items-center justify-between gap-4">
-                    <span className="text-xs font-medium text-white/55">
-                      Password
-                    </span>
-                    <Link
-                      href={`/${locale}/auth/forgot`}
-                      className="text-[11px] font-medium text-[#8f7aff] transition hover:text-[#aa9bff]"
-                    >
-                      Forgot password?
-                    </Link>
-                  </div>
-
-                  <input
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    className={inputClass}
-                    placeholder="Your password"
-                    required
-                  />
-                </label>
-
-                {mergedError ? (
-                  <div className="rounded-xl border border-red-500/20 bg-red-500/[0.07] px-3.5 py-3 text-xs text-red-200/85">
-                    {mergedError}
-                  </div>
-                ) : null}
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="mt-1 flex h-12 w-full items-center justify-center rounded-xl bg-[#7657ff] px-4 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(118,87,255,.18)] transition hover:bg-[#846cff] disabled:cursor-not-allowed disabled:opacity-55"
+              {!challenge ? (
+                <form
+                  onSubmit={onSubmit}
+                  className="space-y-4"
                 >
-                  {submitting ? "Signing in..." : "Sign in"}
-                </button>
-              </form>
+                  <label className="block">
+                    <div className="mb-2 text-xs font-medium text-white/55">
+                      Email
+                    </div>
+                    <input
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      className={inputClass}
+                      placeholder="you@company.com"
+                      required
+                    />
+                  </label>
 
-              <div className="my-6 flex items-center gap-3">
-                <div className="h-px flex-1 bg-white/[0.07]" />
-                <span className="text-[10px] uppercase tracking-[0.14em] text-white/20">
-                  New partner
-                </span>
-                <div className="h-px flex-1 bg-white/[0.07]" />
-              </div>
+                  <label className="block">
+                    <div className="mb-2 flex items-center justify-between gap-4">
+                      <span className="text-xs font-medium text-white/55">
+                        Password
+                      </span>
+                      <Link
+                        href={`/${locale}/auth/forgot`}
+                        className="text-[11px] font-medium text-[#8f7aff] transition hover:text-[#aa9bff]"
+                      >
+                        Forgot password?
+                      </Link>
+                    </div>
 
-              <Link
-                href={`/${locale}/register`}
-                className="flex h-11 w-full items-center justify-center rounded-xl border border-white/[0.10] bg-white/[0.025] px-4 text-xs font-semibold text-white/65 transition hover:border-[#7657ff]/35 hover:bg-[#7657ff]/[0.06] hover:text-white"
-              >
-                Apply to NEXUS ALLIANCE
-              </Link>
+                    <input
+                      name="password"
+                      type="password"
+                      autoComplete="current-password"
+                      className={inputClass}
+                      placeholder="Your password"
+                      required
+                    />
+                  </label>
 
-              <div className="mt-6 rounded-xl border border-white/[0.06] bg-black/10 px-3.5 py-3 text-[10px] leading-5 text-white/25">
-                Internal staff and approved affiliates use the same secure
-                sign-in. Access and available workspace modules are determined
-                by account role.
-              </div>
+                  {mergedError ? (
+                    <ErrorBox>
+                      {mergedError}
+                    </ErrorBox>
+                  ) : null}
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="mt-1 flex h-12 w-full items-center justify-center rounded-xl bg-[#7657ff] px-4 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(118,87,255,.18)] transition hover:bg-[#846cff] disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    {submitting
+                      ? "Checking..."
+                      : "Continue"}
+                  </button>
+                </form>
+              ) : (
+                <form
+                  onSubmit={onVerify}
+                  className="space-y-4"
+                >
+                  <label className="block">
+                    <div className="mb-2 text-xs font-medium text-white/55">
+                      Authenticator / recovery code
+                    </div>
+
+                    <input
+                      value={verificationCode}
+                      onChange={(event) =>
+                        setVerificationCode(
+                          event.target.value,
+                        )
+                      }
+                      autoFocus
+                      autoComplete="one-time-code"
+                      className={`${inputClass} font-mono tracking-[0.16em]`}
+                      placeholder="123456"
+                      required
+                    />
+                  </label>
+
+                  <div className="rounded-xl border border-white/[0.07] bg-black/10 px-3.5 py-3 text-[10px] leading-5 text-white/28">
+                    The login challenge expires in five
+                    minutes. Recovery codes are one-time
+                    use.
+                  </div>
+
+                  {mergedError ? (
+                    <ErrorBox>
+                      {mergedError}
+                    </ErrorBox>
+                  ) : null}
+
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="flex h-12 w-full items-center justify-center rounded-xl bg-[#7657ff] px-4 text-sm font-semibold text-white transition hover:bg-[#846cff] disabled:opacity-55"
+                  >
+                    {submitting
+                      ? "Verifying..."
+                      : "Verify and sign in"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChallenge(null);
+                      setVerificationCode("");
+                      setLocalError(null);
+                    }}
+                    className="flex h-11 w-full items-center justify-center rounded-xl border border-white/[0.09] text-xs font-semibold text-white/48 transition hover:text-white"
+                  >
+                    Use another account
+                  </button>
+                </form>
+              )}
+
+              {!challenge ? (
+                <>
+                  <div className="my-6 flex items-center gap-3">
+                    <div className="h-px flex-1 bg-white/[0.07]" />
+                    <span className="text-[10px] uppercase tracking-[0.14em] text-white/20">
+                      New partner
+                    </span>
+                    <div className="h-px flex-1 bg-white/[0.07]" />
+                  </div>
+
+                  <Link
+                    href={`/${locale}/register`}
+                    className="flex h-11 w-full items-center justify-center rounded-xl border border-white/[0.10] bg-white/[0.025] px-4 text-xs font-semibold text-white/65 transition hover:border-[#7657ff]/35 hover:bg-[#7657ff]/[0.06] hover:text-white"
+                  >
+                    Apply to NEXUS ALLIANCE
+                  </Link>
+
+                  <div className="mt-6 rounded-xl border border-white/[0.06] bg-black/10 px-3.5 py-3 text-[10px] leading-5 text-white/25">
+                    Internal staff and approved affiliates
+                    use the same secure sign-in. Access and
+                    available workspace modules are
+                    determined by account role.
+                  </div>
+                </>
+              ) : null}
             </div>
 
             <div className="mt-5 text-center text-[10px] tracking-[0.04em] text-white/18">
@@ -216,6 +440,18 @@ export default function LoginPage({
         </div>
       </div>
     </main>
+  );
+}
+
+function ErrorBox({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-red-500/20 bg-red-500/[0.07] px-3.5 py-3 text-xs text-red-200/85">
+      {children}
+    </div>
   );
 }
 
@@ -231,7 +467,9 @@ function Feature({
       <div className="text-[9px] font-semibold uppercase tracking-[0.13em] text-white/27">
         {label}
       </div>
-      <div className="mt-2 text-sm font-semibold text-white/72">{value}</div>
+      <div className="mt-2 text-sm font-semibold text-white/72">
+        {value}
+      </div>
     </div>
   );
 }

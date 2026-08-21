@@ -20,8 +20,6 @@ function masterKey(): crypto.KeyObject {
     .update(value, "utf8")
     .digest("hex");
 
-  // createSecretKey accepts a string + encoding and avoids the Buffer generic
-  // mismatch caused by newer @types/node definitions.
   return crypto.createSecretKey(digestHex, "hex");
 }
 
@@ -34,6 +32,13 @@ function recoveryPepper(): crypto.KeyObject {
   return crypto.createSecretKey(pepperHex, "hex");
 }
 
+export function hashLoginChallengeToken(token: string) {
+  return crypto
+    .createHash("sha256")
+    .update(String(token || ""), "utf8")
+    .digest("hex");
+}
+
 export function encryptTwoFactorSecret(secret: string) {
   const ivHex = crypto.randomBytes(12).toString("hex");
 
@@ -43,8 +48,6 @@ export function encryptTwoFactorSecret(secret: string) {
     Buffer.from(ivHex, "hex") as any,
   );
 
-  // Keep ciphertext as a string. This deliberately avoids Buffer.concat(),
-  // which is where the current Node typings fail in this project.
   const encryptedHex =
     cipher.update(secret, "utf8", "hex") +
     cipher.final("hex");
