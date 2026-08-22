@@ -101,6 +101,12 @@ export default function LoginPage({
           setLocalError(
             "Two-factor authentication is required for this staff account. Contact the NEXUS owner before signing in.",
           );
+        } else if (
+          json?.error === "TOO_MANY_ATTEMPTS"
+        ) {
+          setLocalError(
+            "Too many sign-in attempts. Please wait and try again.",
+          );
         } else {
           setLocalError(
             "Incorrect email or password.",

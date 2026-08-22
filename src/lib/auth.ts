@@ -7,6 +7,10 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import {
+  checkRateLimit,
+  clientIpFromHeaders,
+} from "@/lib/nexus-rate-limit";
+import {
   decryptTwoFactorSecret,
   hashLoginChallengeToken,
   isTwoFactorRequiredForRole,
@@ -94,8 +98,20 @@ const credentialsProvider = Credentials({
     verificationCode: { label: "2FA code", type: "text" },
   },
 
-  async authorize(creds) {
+  async authorize(creds, req) {
     try {
+      const credentialsIpLimit = await checkRateLimit({
+        scope: "auth-credentials-ip",
+        identifier: clientIpFromHeaders((req as any)?.headers),
+        limit: 30,
+        windowSeconds: 15 * 60,
+      });
+
+      if (!credentialsIpLimit.allowed) {
+        console.warn("[AUTH] credentials IP rate limited");
+        return null;
+      }
+
       const challengeToken = String(creds?.challengeToken || "").trim();
       const verificationCode = String(creds?.verificationCode || "").trim();
 
@@ -231,6 +247,18 @@ const credentialsProvider = Credentials({
       const password = creds?.password ?? "";
 
       if (!email || !password) return null;
+
+      const credentialsEmailLimit = await checkRateLimit({
+        scope: "auth-credentials-email",
+        identifier: email,
+        limit: 30,
+        windowSeconds: 60 * 60,
+      });
+
+      if (!credentialsEmailLimit.allowed) {
+        console.warn("[AUTH] credentials account rate limited");
+        return null;
+      }
 
       const user = await prisma.user.findUnique({
         where: { email },

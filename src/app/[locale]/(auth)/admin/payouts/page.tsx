@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { hasRecentStepUp } from "@/lib/nexus-step-up";
 import {
   NexusFinanceBucket,
   NexusFinanceEntryKind,
@@ -140,8 +141,29 @@ export default async function AdminPayoutsPage({
 
   async function approvePayout(fd: FormData) {
     "use server";
+    const securitySession = await auth();
+    const securityUserId = String(
+      (securitySession?.user as any)?.id || "",
+    );
+    const securityRole = String(
+      (securitySession?.user as any)?.role || "",
+    );
 
-    const staff = await requireStaff(locale);
+    if (
+      !securityUserId ||
+      !["OWNER", "ADMIN"].includes(securityRole)
+    ) {
+      redirect(`/${locale}`);
+    }
+
+    if (!hasRecentStepUp(securityUserId)) {
+      redirect(
+        `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
+          `/${locale}/admin/payouts`,
+        )}`,
+      );
+    }
+const staff = await requireStaff(locale);
     const payoutId = String(fd.get("payoutId") || "");
 
     if (!payoutId) {
@@ -195,8 +217,29 @@ export default async function AdminPayoutsPage({
 
   async function markPaid(fd: FormData) {
     "use server";
+    const securitySession = await auth();
+    const securityUserId = String(
+      (securitySession?.user as any)?.id || "",
+    );
+    const securityRole = String(
+      (securitySession?.user as any)?.role || "",
+    );
 
-    const staff = await requireStaff(locale);
+    if (
+      !securityUserId ||
+      !["OWNER", "ADMIN"].includes(securityRole)
+    ) {
+      redirect(`/${locale}`);
+    }
+
+    if (!hasRecentStepUp(securityUserId)) {
+      redirect(
+        `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
+          `/${locale}/admin/payouts`,
+        )}`,
+      );
+    }
+const staff = await requireStaff(locale);
     const payoutId = String(fd.get("payoutId") || "");
     const txHash = String(fd.get("txHash") || "").trim();
 
@@ -305,8 +348,29 @@ export default async function AdminPayoutsPage({
 
   async function rejectPayout(fd: FormData) {
     "use server";
+    const securitySession = await auth();
+    const securityUserId = String(
+      (securitySession?.user as any)?.id || "",
+    );
+    const securityRole = String(
+      (securitySession?.user as any)?.role || "",
+    );
 
-    const staff = await requireStaff(locale);
+    if (
+      !securityUserId ||
+      !["OWNER", "ADMIN"].includes(securityRole)
+    ) {
+      redirect(`/${locale}`);
+    }
+
+    if (!hasRecentStepUp(securityUserId)) {
+      redirect(
+        `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
+          `/${locale}/admin/payouts`,
+        )}`,
+      );
+    }
+const staff = await requireStaff(locale);
     const payoutId = String(fd.get("payoutId") || "");
 
     if (!payoutId) {

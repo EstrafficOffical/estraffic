@@ -6,17 +6,24 @@ import {
   hashLoginChallengeToken,
   isTwoFactorRequiredForRole,
 } from "@/lib/nexus-2fa";
+import {
+  checkRateLimit,
+  clientIp,
+  rateLimitHeaders,
+} from "@/lib/nexus-rate-limit";
 
 export const dynamic = "force-dynamic";
 
 function noStore(
   data: Record<string, unknown>,
   status = 200,
+  extraHeaders?: Record<string, string>,
 ) {
   return NextResponse.json(data, {
     status,
     headers: {
       "Cache-Control": "no-store",
+      ...(extraHeaders || {}),
     },
   });
 }
@@ -30,6 +37,24 @@ export async function POST(req: Request) {
       .toLowerCase();
     const password = String(body?.password || "");
 
+    const ipLimit = await checkRateLimit({
+      scope: "auth-preauth-ip",
+      identifier: clientIp(req),
+      limit: 12,
+      windowSeconds: 15 * 60,
+    });
+
+    if (!ipLimit.allowed) {
+      return noStore(
+        {
+          ok: false,
+          error: "TOO_MANY_ATTEMPTS",
+        },
+        429,
+        rateLimitHeaders(ipLimit),
+      );
+    }
+
     if (!email || !password) {
       return noStore(
         {
@@ -37,6 +62,24 @@ export async function POST(req: Request) {
           error: "INVALID_CREDENTIALS",
         },
         401,
+      );
+    }
+
+    const emailLimit = await checkRateLimit({
+      scope: "auth-preauth-email",
+      identifier: email,
+      limit: 30,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!emailLimit.allowed) {
+      return noStore(
+        {
+          ok: false,
+          error: "TOO_MANY_ATTEMPTS",
+        },
+        429,
+        rateLimitHeaders(emailLimit),
       );
     }
 
