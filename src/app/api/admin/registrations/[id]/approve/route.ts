@@ -8,7 +8,8 @@ const bodySchema = z.object({
   managerId: z.string().trim().min(1).nullable().optional(),
 });
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, res } = await requireAdmin();
   if (res) return res;
 

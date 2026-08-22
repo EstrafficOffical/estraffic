@@ -5,7 +5,8 @@ import { requireAdmin } from "@/lib/api-guards";
 
 const bodySchema = z.object({ reason: z.string().trim().max(2000).optional().default("") });
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, res } = await requireAdmin();
   if (res) return res;
 

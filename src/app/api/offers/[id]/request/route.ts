@@ -2,10 +2,8 @@ import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-guards"; // <- ВАЖНО
 
-export async function POST(
-  _req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function POST(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { session, res } = await requireAuth(); // <- ВАЖНО
   if (res) return res;
 

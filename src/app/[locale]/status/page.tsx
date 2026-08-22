@@ -1,12 +1,18 @@
 import Link from "next/link";
 
-export default function ApplicationStatusPage({
-  params: { locale },
-  searchParams,
-}: {
-  params: { locale: string };
-  searchParams: { email?: string };
-}) {
+export default async function ApplicationStatusPage(
+  props: {
+    params: Promise<{ locale: string }>;
+    searchParams: Promise<{ email?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
+
+  const {
+    locale
+  } = params;
+
   const email = (searchParams.email || "").trim();
 
   return (

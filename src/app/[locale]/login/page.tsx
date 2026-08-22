@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, use } from "react";
 
 type ChallengeState = {
   token: string;
   expiresAt: string;
 };
 
-export default function LoginPage({
-  params,
-}: {
-  params: { locale: string };
-}) {
+export default function LoginPage(
+  props: {
+    params: Promise<{ locale: string }>;
+  }
+) {
+  const params = use(props.params);
   const { locale } = params;
   const qs = useSearchParams();
 

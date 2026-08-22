@@ -5,8 +5,14 @@ import { prisma } from "@/lib/prisma";
 import TeamActions from "./TeamActions";
 
 export const dynamic = "force-dynamic";
-export default async function TeamPage({ params: { locale } }: { params: { locale: string } }) {
-  const session = await auth(); const myRole=String((session?.user as any)?.role||""); const myId=String((session?.user as any)?.id||"");
+export default async function TeamPage(props: { params: Promise<{ locale: string }> }) {
+  const params = await props.params;
+
+  const {
+    locale
+  } = params;
+
+  const session = await auth();const myRole=String((session?.user as any)?.role||"");const myId=String((session?.user as any)?.id||"");
   if(!session?.user || !["OWNER","ADMIN","MANAGER"].includes(myRole)) redirect(`/${locale}`);
   const staff=await prisma.user.findMany({ where:{ role:{ in:["MANAGER","ADMIN","OWNER"] } }, include:{ _count:{ select:{ managedAffiliates:true } } }, orderBy:[{role:"desc"},{name:"asc"}] });
   const counts={ owner:staff.filter(s=>s.role==="OWNER").length, admin:staff.filter(s=>s.role==="ADMIN").length, manager:staff.filter(s=>s.role==="MANAGER").length, active:staff.filter(s=>s.status==="APPROVED").length };

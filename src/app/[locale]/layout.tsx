@@ -18,13 +18,18 @@ function normalizeLocale(raw?: string): SupportedLocale {
   return (SUPPORTED as readonly string[]).includes(s) ? (s as SupportedLocale) : "ru";
 }
 
-export default function LocaleLayout({
-  children,
-  params,
-}: {
-  children: ReactNode;
-  params: { locale: string };
-}) {
+export default async function LocaleLayout(
+  props: {
+    children: ReactNode;
+    params: Promise<{ locale: string }>;
+  }
+) {
+  const params = await props.params;
+
+  const {
+    children
+  } = props;
+
   const locale = normalizeLocale(params?.locale);
   const messages = DICTS[locale];
 

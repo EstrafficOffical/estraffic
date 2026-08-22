@@ -32,10 +32,12 @@ function dateTime(value: Date) {
 }
 
 export default async function ControlCenter({
-  params: { locale },
+  params,
 }: {
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
+
   const session = await auth();
   const role = String((session?.user as any)?.role || "");
 

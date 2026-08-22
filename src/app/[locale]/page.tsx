@@ -6,11 +6,17 @@ import NexusDashboard from "@/app/components/NexusDashboard";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage({
-  params: { locale },
-}: {
-  params: { locale: string };
-}) {
+export default async function HomePage(
+  props: {
+    params: Promise<{ locale: string }>;
+  }
+) {
+  const params = await props.params;
+
+  const {
+    locale
+  } = params;
+
   const session = await auth();
 
   if (!session?.user) {

@@ -8,7 +8,16 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = { q?: string; status?: string };
 
-export default async function UsersPage({ params: { locale }, searchParams }: { params: { locale: string }; searchParams: SearchParams }) {
+export default async function UsersPage(
+  props: { params: Promise<{ locale: string }>; searchParams: Promise<SearchParams> }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
+
+  const {
+    locale
+  } = params;
+
   const session = await auth();
   const role = String((session?.user as any)?.role || "");
   if (!session?.user || !["OWNER", "ADMIN", "MANAGER"].includes(role)) redirect(`/${locale}`);

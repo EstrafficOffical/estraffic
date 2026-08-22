@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, use } from "react";
 
-export default function StepUpPage({
-  params,
-}: {
-  params: { locale: string };
-}) {
+export default function StepUpPage(
+  props: {
+    params: Promise<{ locale: string }>;
+  }
+) {
+  const params = use(props.params);
   const { locale } = params;
   const qs = useSearchParams();
 

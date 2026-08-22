@@ -10,19 +10,22 @@ export const dynamic = "force-dynamic";
 type SearchParams = { q?: string; status?: string };
 
 export default async function PendingRegistrationsPage({
-  params: { locale },
+  params,
   searchParams,
 }: {
-  params: { locale: string };
-  searchParams: SearchParams;
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
+  const { locale } = await params;
+  const resolvedSearchParams = await searchParams;
+
   const session = await auth();
   const role = String((session?.user as any)?.role || "");
   if (!session?.user) redirect(`/${locale}/login?callbackUrl=/${locale}/admin/registrations`);
   if (!new Set(["OWNER", "ADMIN"]).has(role)) redirect(`/${locale}`);
 
-  const q = (searchParams.q || "").trim();
-  const status = (searchParams.status || "PENDING").toUpperCase();
+  const q = (resolvedSearchParams.q || "").trim();
+  const status = (resolvedSearchParams.status || "PENDING").toUpperCase();
 
   const [applications, managers] = await Promise.all([
     prisma.affiliateApplication.findMany({
@@ -70,7 +73,7 @@ export default async function PendingRegistrationsPage({
         </div>
 
         <form className="mb-4 flex flex-wrap gap-2 rounded-xl border border-white/[0.09] bg-[#0d0d10] p-3">
-          <input name="q" defaultValue={q} placeholder="Search name, email, Telegram…" className="min-w-64 flex-1 rounded-lg border border-white/[0.10] bg-[#111115] px-3 py-2 text-sm outline-none focus:border-[#7657ff]/50" />
+          <input name="q" defaultValue={q} placeholder="Search name, email, TelegramвЂ¦" className="min-w-64 flex-1 rounded-lg border border-white/[0.10] bg-[#111115] px-3 py-2 text-sm outline-none focus:border-[#7657ff]/50" />
           <select name="status" defaultValue={status} className="rounded-lg border border-white/[0.10] bg-[#111115] px-3 py-2 text-sm">
             <option value="PENDING">Pending</option>
             <option value="APPROVED">Approved</option>
@@ -97,29 +100,29 @@ export default async function PendingRegistrationsPage({
                       {application.status}
                     </span>
                   </div>
-                  <div className="mt-1 text-sm text-[#888891]">{application.user.email} · {application.user.telegram || "No Telegram"}</div>
+                  <div className="mt-1 text-sm text-[#888891]">{application.user.email} В· {application.user.telegram || "No Telegram"}</div>
                   <div className="mt-1 text-xs text-[#66666f]">Submitted {application.createdAt.toLocaleString()}</div>
                 </div>
                 <div className="text-sm text-[#9999a2]">{application.company || "Individual affiliate"}</div>
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Info label="Traffic sources" value={application.trafficSources.join(" · ")} />
-                <Info label="Main GEOs" value={application.mainGeos.join(" · ")} />
-                <Info label="Verticals" value={application.verticalInterests.join(" · ")} />
-                <Info label="Estimated volume" value={application.estimatedMonthlyVolume || "—"} />
+                <Info label="Traffic sources" value={application.trafficSources.join(" В· ")} />
+                <Info label="Main GEOs" value={application.mainGeos.join(" В· ")} />
+                <Info label="Verticals" value={application.verticalInterests.join(" В· ")} />
+                <Info label="Estimated volume" value={application.estimatedMonthlyVolume || "вЂ”"} />
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <Info label="Experience" value={application.experience || "—"} />
-                <Info label="About" value={application.about || "—"} />
+                <Info label="Experience" value={application.experience || "вЂ”"} />
+                <Info label="About" value={application.about || "вЂ”"} />
               </div>
 
               {application.status === "PENDING" ? (
                 <RegistrationActions applicationId={application.id} managers={managers} />
               ) : (
                 <div className="mt-5 rounded-xl border border-white/[0.08] bg-[#111115] p-3 text-xs text-[#888891]">
-                  Reviewed {application.reviewedAt?.toLocaleString() || "—"} by {application.reviewedBy?.name || application.reviewedBy?.email || "staff"}
-                  {application.rejectionReason ? ` · Reason: ${application.rejectionReason}` : ""}
+                  Reviewed {application.reviewedAt?.toLocaleString() || "вЂ”"} by {application.reviewedBy?.name || application.reviewedBy?.email || "staff"}
+                  {application.rejectionReason ? ` В· Reason: ${application.rejectionReason}` : ""}
                 </div>
               )}
             </article>

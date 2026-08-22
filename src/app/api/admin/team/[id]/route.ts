@@ -3,10 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasRecentStepUp } from "@/lib/nexus-step-up";
 
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string } },
-) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth();
   const meRole = String(
     (session?.user as any)?.role || "",
@@ -25,7 +23,7 @@ export async function POST(
     );
   }
 
-  if (!hasRecentStepUp(meId)) {
+  if (!(await hasRecentStepUp(meId))) {
     return NextResponse.json(
       { error: "STEP_UP_REQUIRED" },
       { status: 428 },

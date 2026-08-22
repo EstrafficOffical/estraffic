@@ -24,7 +24,7 @@ export async function GET() {
     );
   }
 
-  if (!hasRecentStepUp(userId)) {
+  if (!(await hasRecentStepUp(userId))) {
     return NextResponse.json(
       { error: "STEP_UP_REQUIRED" },
       {

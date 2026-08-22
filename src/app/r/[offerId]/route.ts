@@ -50,8 +50,8 @@ function applyClickPlaceholders(
 }
 
 // GET /r/:offerId?subid=&sub_id=&source=&user=
-export async function GET(req: Request, ctx: { params: { offerId: string } }) {
-  const { offerId } = ctx.params;
+export async function GET(req: Request, ctx: { params: Promise<{ offerId: string }> }) {
+  const { offerId } = (await ctx.params);
   const url = new URL(req.url);
 
   const subId =

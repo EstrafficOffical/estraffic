@@ -118,10 +118,10 @@ export function verifyStepUpToken(
   }
 }
 
-export function hasRecentStepUp(userId: string) {
+export async function hasRecentStepUp(userId: string) {
   if (!userId) return false;
 
-  const token = cookies().get(stepUpCookieName())?.value;
+  const token = (await cookies()).get(stepUpCookieName())?.value;
 
   if (!token) return false;
 

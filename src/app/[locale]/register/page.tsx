@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, use } from "react";
 import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
 
 const trafficSources = [
@@ -134,7 +134,8 @@ function ChipGroup({
   );
 }
 
-export default function RegisterPage({ params }: { params: { locale: string } }) {
+export default function RegisterPage(props: { params: Promise<{ locale: string }> }) {
+  const params = use(props.params);
   const { locale } = params;
   const router = useRouter();
   const [step, setStep] = useState(0);

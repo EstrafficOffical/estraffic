@@ -68,13 +68,16 @@ async function getBucketTotal(bucket: NexusFinanceBucket) {
   return Number(result._sum.amount || 0);
 }
 
-export default async function AdminPayoutsPage({
-  params: { locale },
-  searchParams,
-}: {
-  params: { locale: string };
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function AdminPayoutsPage(
+  props: {
+    params: Promise<{ locale: string }>;
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const { locale } = await props.params;
+  const resolvedSearchParams = searchParams;
+
   await requireStaff(locale);
 
   const payouts = await prisma.nexusPayout.findMany({
@@ -120,9 +123,9 @@ export default async function AdminPayoutsPage({
     0,
   );
 
-  const state = Array.isArray(searchParams?.payout)
-    ? searchParams?.payout[0]
-    : searchParams?.payout;
+  const state = Array.isArray(resolvedSearchParams?.payout)
+    ? resolvedSearchParams?.payout[0]
+    : resolvedSearchParams?.payout;
 
   const message =
     state === "approved"
@@ -156,7 +159,7 @@ export default async function AdminPayoutsPage({
       redirect(`/${locale}`);
     }
 
-    if (!hasRecentStepUp(securityUserId)) {
+    if (!(await hasRecentStepUp(securityUserId))) {
       redirect(
         `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
           `/${locale}/admin/payouts`,
@@ -232,7 +235,7 @@ const staff = await requireStaff(locale);
       redirect(`/${locale}`);
     }
 
-    if (!hasRecentStepUp(securityUserId)) {
+    if (!(await hasRecentStepUp(securityUserId))) {
       redirect(
         `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
           `/${locale}/admin/payouts`,
@@ -363,7 +366,7 @@ const staff = await requireStaff(locale);
       redirect(`/${locale}`);
     }
 
-    if (!hasRecentStepUp(securityUserId)) {
+    if (!(await hasRecentStepUp(securityUserId))) {
       redirect(
         `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
           `/${locale}/admin/payouts`,

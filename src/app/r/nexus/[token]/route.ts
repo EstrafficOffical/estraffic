@@ -70,8 +70,8 @@ function buildDestination(
   return out.toString();
 }
 
-export async function GET(req: Request, ctx: { params: { token: string } }) {
-  const token = ctx.params.token;
+export async function GET(req: Request, ctx: { params: Promise<{ token: string }> }) {
+  const token = (await ctx.params).token;
 
   // Chromium/Opera may issue a speculative prefetch/prerender request immediately
   // before the real navigation. Never count or redirect speculative requests.

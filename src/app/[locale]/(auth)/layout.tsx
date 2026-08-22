@@ -2,13 +2,22 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import NexusAppShell from "@/app/components/NexusAppShell";
 
-export default async function AuthLayout({
-  children,
-  params: { locale },
-}: {
-  children: React.ReactNode;
-  params: { locale: string };
-}) {
+export default async function AuthLayout(
+  props: {
+    children: React.ReactNode;
+    params: Promise<{ locale: string }>;
+  }
+) {
+  const params = await props.params;
+
+  const {
+    locale
+  } = params;
+
+  const {
+    children
+  } = props;
+
   const session = await auth();
 
   if (!session?.user) {
