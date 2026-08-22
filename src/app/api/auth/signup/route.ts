@@ -7,6 +7,7 @@ import {
   clientIp,
   rateLimitHeaders,
 } from "@/lib/nexus-rate-limit";
+import { createApplicationStatusToken } from "@/lib/nexus-application-status";
 
 export const dynamic = "force-dynamic";
 
@@ -225,6 +226,13 @@ export async function POST(req: Request) {
         },
       );
 
+    const statusToken =
+      createApplicationStatusToken({
+        applicationId:
+          created.application.id,
+        userId: created.user.id,
+      });
+
     return NextResponse.json(
       {
         ok: true,
@@ -234,6 +242,7 @@ export async function POST(req: Request) {
           created.application.id,
         status:
           created.application.status,
+        statusToken,
       },
       {
         status: 201,

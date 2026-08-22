@@ -213,7 +213,20 @@ export default function RegisterPage(props: { params: Promise<{ locale: string }
         return;
       }
 
-      router.push(`/${locale}/status?email=${encodeURIComponent(form.email.trim().toLowerCase())}`);
+      const statusToken = String(
+        data?.statusToken || "",
+      );
+
+      if (!statusToken) {
+        setServerError(
+          "Application submitted, but the status link could not be created. Try signing in with the same credentials.",
+        );
+        return;
+      }
+
+      router.push(
+        `/${locale}/status?token=${encodeURIComponent(statusToken)}`,
+      );
     } catch {
       setServerError("Network error. Please try again.");
     } finally {

@@ -11,6 +11,7 @@ import {
   clientIp,
   rateLimitHeaders,
 } from "@/lib/nexus-rate-limit";
+import { createApplicationStatusToken } from "@/lib/nexus-application-status";
 
 export const dynamic = "force-dynamic";
 
@@ -99,10 +100,7 @@ export async function POST(req: Request) {
       },
     });
 
-    if (
-      !user?.passwordHash ||
-      user.status !== "APPROVED"
-    ) {
+    if (!user?.passwordHash) {
       return noStore(
         {
           ok: false,
@@ -118,6 +116,52 @@ export async function POST(req: Request) {
     );
 
     if (!passwordOk) {
+      return noStore(
+        {
+          ok: false,
+          error: "INVALID_CREDENTIALS",
+        },
+        401,
+      );
+    }
+
+    if (user.status === "PENDING") {
+      const application =
+        await prisma.affiliateApplication.findFirst({
+          where: {
+            userId: user.id,
+            status: {
+              in: ["PENDING", "REJECTED"],
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            id: true,
+            userId: true,
+          },
+        });
+
+      if (application) {
+        const statusToken =
+          createApplicationStatusToken({
+            applicationId: application.id,
+            userId: application.userId,
+          });
+
+        return noStore(
+          {
+            ok: false,
+            error: "APPLICATION_STATUS",
+            statusToken,
+          },
+          403,
+        );
+      }
+    }
+
+    if (user.status !== "APPROVED") {
       return noStore(
         {
           ok: false,

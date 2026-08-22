@@ -96,6 +96,16 @@ export default function LoginPage(
 
       if (!response.ok) {
         if (
+          json?.error === "APPLICATION_STATUS" &&
+          typeof json?.statusToken === "string" &&
+          json.statusToken
+        ) {
+          window.location.assign(
+            `/${locale}/status?token=${encodeURIComponent(json.statusToken)}`,
+          );
+          return;
+        }
+        if (
           json?.error ===
           "TWO_FACTOR_SETUP_REQUIRED"
         ) {
