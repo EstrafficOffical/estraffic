@@ -5,7 +5,12 @@ import { auth } from "@/lib/auth";
 
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user || (session.user as any).role !== "ADMIN") {
+  if (
+    !session?.user ||
+    !["OWNER", "ADMIN"].includes(
+      String((session.user as any).role || ""),
+    )
+  ) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 

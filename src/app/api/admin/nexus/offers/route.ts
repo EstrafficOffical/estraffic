@@ -445,6 +445,116 @@ export async function POST(request: Request) {
       });
     }
 
+    if (action === "restoreFlow") {
+      const flowId = text(body.flowId);
+
+      if (!flowId) {
+        return NextResponse.json(
+          {
+            error:
+              "flowId is required",
+          },
+          {
+            status: 400,
+          },
+        );
+      }
+
+      const existing =
+        await prisma.flow.findUnique({
+          where: {
+            id: flowId,
+          },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            market: {
+              select: {
+                geo: true,
+                brand: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+      if (!existing) {
+        return NextResponse.json(
+          {
+            error:
+              "FLOW_NOT_FOUND",
+          },
+          {
+            status: 404,
+          },
+        );
+      }
+
+      if (existing.status !== FlowStatus.ARCHIVED) {
+        return NextResponse.json(
+          {
+            error:
+              "FLOW_NOT_ARCHIVED",
+            message:
+              "Only archived flows can be restored.",
+          },
+          {
+            status: 409,
+          },
+        );
+      }
+
+      const actorId = String(
+        (writeGuard.session!.user as any)
+          ?.id || "",
+      );
+
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.flow.update({
+            where: {
+              id: flowId,
+            },
+            data: {
+              status:
+                FlowStatus.ACTIVE,
+            },
+          });
+
+          await tx.nexusSecurityEvent.create({
+            data: {
+              eventType:
+                "FLOW_RESTORED",
+              userId:
+                actorId || null,
+              metadata: {
+                flowId,
+                objectLabel: `${existing.market.brand.name} / ${existing.market.geo} / ${existing.name}`,
+                brand:
+                  existing.market.brand
+                    .name,
+                geo:
+                  existing.market.geo,
+                flow:
+                  existing.name,
+                previousStatus:
+                  existing.status,
+                nextStatus:
+                  FlowStatus.ACTIVE,
+              },
+            },
+          });
+        },
+      );
+
+      return NextResponse.json({
+        ok: true,
+      });
+    }
     if (action === "deleteFlow") {
       const flowId = text(body.flowId);
 

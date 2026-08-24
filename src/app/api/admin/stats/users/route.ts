@@ -13,7 +13,12 @@ function parseDates(req: Request) {
 
 export async function GET(req: Request) {
   const session = await auth();
-  if (!session?.user || (session.user as any).role !== "ADMIN") {
+  if (
+    !session?.user ||
+    !["OWNER", "ADMIN"].includes(
+      String((session.user as any).role || ""),
+    )
+  ) {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
   const { gte, lt } = parseDates(req);

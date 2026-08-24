@@ -54,3 +54,98 @@ button:focus {
   -webkit-mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 72%);
   mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 72%);
 }
+
+/* NEXUS_GLOBAL_SCROLLBAR_THEME_START */
+
+/*
+  Global NEXUS scrollbar treatment.
+  Applies to the page, sidebar, tables, panels and any overflow container.
+  Firefox uses scrollbar-color/width; Chromium/WebKit uses pseudo-elements.
+*/
+
+:root {
+  --nexus-scrollbar-size: 9px;
+  --nexus-scrollbar-track: rgba(255, 255, 255, 0.025);
+  --nexus-scrollbar-thumb: rgba(118, 87, 255, 0.48);
+  --nexus-scrollbar-thumb-hover: rgba(128, 104, 255, 0.78);
+  --nexus-scrollbar-thumb-active: rgba(139, 113, 255, 0.92);
+}
+
+/* Firefox */
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color:
+    var(--nexus-scrollbar-thumb)
+    var(--nexus-scrollbar-track);
+}
+
+/* Chromium / Edge / Opera / Safari */
+::-webkit-scrollbar {
+  width: var(--nexus-scrollbar-size);
+  height: var(--nexus-scrollbar-size);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--nexus-scrollbar-track);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb {
+  min-width: 36px;
+  min-height: 36px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(139, 113, 255, 0.95),
+      rgba(92, 65, 216, 0.82)
+    )
+    padding-box;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.045),
+    0 0 10px rgba(118, 87, 255, 0.12);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(151, 128, 255, 1),
+      rgba(112, 82, 235, 0.95)
+    )
+    padding-box;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 0 14px rgba(118, 87, 255, 0.22);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(161, 141, 255, 1),
+      rgba(126, 96, 246, 1)
+    )
+    padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/*
+  Keeps the sidebar and table scrollbars elegant without affecting layout.
+  Any element that already scrolls automatically inherits this theme.
+*/
+[data-scrollbar="hidden"] {
+  scrollbar-width: none;
+}
+
+[data-scrollbar="hidden"]::-webkit-scrollbar {
+  display: none;
+}
+
+/* NEXUS_GLOBAL_SCROLLBAR_THEME_END */

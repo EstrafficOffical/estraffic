@@ -567,6 +567,29 @@ export default function AdminOffersPage() {
                                             
                                                {writable && (
                                                  <div className="mt-3 flex min-w-[110px] flex-col gap-2 border-t border-white/[0.06] pt-3">
+                                                   {flow.status === "ARCHIVED" && (
+                                                     <button
+                                                       type="button"
+                                                       disabled={busy}
+                                                       className="rounded-lg border border-[#7657ff]/30 bg-[#7657ff]/[0.09] px-3 py-2 text-xs font-semibold text-[#b6a8ff] transition hover:bg-[#7657ff]/[0.16] disabled:opacity-40"
+                                                       onClick={async () => {
+                                                         if (
+                                                           !confirm(
+                                                             `Restore "${brand.name} / ${market.geo} / ${flow.name}" to ACTIVE?`,
+                                                           )
+                                                         ) {
+                                                           return;
+                                                         }
+                                                   
+                                                         await mutate({
+                                                           action: "restoreFlow",
+                                                           flowId: flow.id,
+                                                         });
+                                                       }}
+                                                     >
+                                                       Restore
+                                                     </button>
+                                                   )}
                                                    {flow.status !== "ARCHIVED" && (
                                                      <button
                                                        type="button"

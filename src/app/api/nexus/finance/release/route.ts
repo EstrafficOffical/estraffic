@@ -11,15 +11,18 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-const FINANCE_SECRET =
-  process.env.NEXUS_FINANCE_SECRET ||
-  process.env.CRON_SECRET ||
-  process.env.NEXUS_POSTBACK_SECRET ||
-  process.env.POSTBACK_SHARED_SECRET ||
-  process.env.SERVER_SECRET;
+const FINANCE_SECRETS = [
+  process.env.NEXUS_FINANCE_SECRET,
+  process.env.CRON_SECRET,
+  process.env.NEXUS_POSTBACK_SECRET,
+  process.env.POSTBACK_SHARED_SECRET,
+  process.env.SERVER_SECRET,
+]
+  .map((value) => value?.trim())
+  .filter((value): value is string => Boolean(value));
 
 function authorized(req: Request) {
-  if (!FINANCE_SECRET) return false;
+  if (FINANCE_SECRETS.length === 0) return false;
 
   const url = new URL(req.url);
   const querySecret = url.searchParams.get("secret")?.trim();
@@ -32,7 +35,9 @@ function authorized(req: Request) {
       : undefined;
 
   return [querySecret, headerSecret, postbackHeader, bearer].some(
-    (candidate) => candidate && candidate === FINANCE_SECRET,
+    (candidate) =>
+      Boolean(candidate) &&
+      FINANCE_SECRETS.includes(candidate as string),
   );
 }
 

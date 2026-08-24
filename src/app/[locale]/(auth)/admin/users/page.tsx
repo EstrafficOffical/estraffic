@@ -185,7 +185,7 @@ export default async function UsersPage({
           <input
             name="q"
             defaultValue={q}
-            placeholder="Search name, email, TelegramвЂ¦"
+            placeholder="Search name, email, Telegram..."
             className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-[#111115] px-3 py-2 text-sm outline-none focus:border-[#7657ff]/40"
           />
 

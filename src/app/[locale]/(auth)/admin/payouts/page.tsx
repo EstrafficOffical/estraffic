@@ -205,6 +205,20 @@ const staff = await requireStaff(locale);
           if (updated.count !== 1) {
             throw new Error("PAYOUT_STATE_CHANGED");
           }
+          await tx.nexusSecurityEvent.create({
+            data: {
+              eventType: "PAYOUT_APPROVED",
+              userId: staff.userId,
+              metadata: {
+                payoutId: payout.id,
+                affiliateUserId: payout.userId,
+                amount: Number(payout.amount),
+                currency: payout.currency,
+                previousStatus: NexusPayoutStatus.REQUESTED,
+                nextStatus: NexusPayoutStatus.APPROVED,
+              },
+            },
+          });
         },
         { isolationLevel: "Serializable" },
       );
@@ -336,6 +350,21 @@ const staff = await requireStaff(locale);
               },
             },
           });
+          await tx.nexusSecurityEvent.create({
+            data: {
+              eventType: "PAYOUT_PAID",
+              userId: staff.userId,
+              metadata: {
+                payoutId: payout.id,
+                affiliateUserId: payout.userId,
+                amount,
+                currency: payout.currency,
+                txHash,
+                previousStatus: NexusPayoutStatus.APPROVED,
+                nextStatus: NexusPayoutStatus.PAID,
+              },
+            },
+          });
         },
         { isolationLevel: "Serializable" },
       );
@@ -464,6 +493,20 @@ const staff = await requireStaff(locale);
               description: "Rejected payout returned funds to available balance",
               metadata: {
                 reviewedById: staff.userId,
+              },
+            },
+          });
+          await tx.nexusSecurityEvent.create({
+            data: {
+              eventType: "PAYOUT_REJECTED",
+              userId: staff.userId,
+              metadata: {
+                payoutId: payout.id,
+                affiliateUserId: payout.userId,
+                amount,
+                currency: payout.currency,
+                previousStatus: payout.status,
+                nextStatus: NexusPayoutStatus.REJECTED,
               },
             },
           });
