@@ -82,7 +82,7 @@ export default async function ApplicationStatusPage(
                 href={`/${locale}/login`}
                 className="rounded-lg bg-[#7657ff] px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-[#866cff]"
               >
-                Partner login
+                Affiliate login
               </Link>
 
               <Link
@@ -129,7 +129,7 @@ export default async function ApplicationStatusPage(
   const description = isRejected
     ? "Your NEXUS ALLIANCE application was reviewed and was not approved for platform access."
     : isApproved
-      ? "Your NEXUS ALLIANCE application has been approved. You can now sign in to your partner workspace."
+      ? "Your NEXUS ALLIANCE application has been approved. You can now sign in to your affiliate workspace."
       : "Your NEXUS ALLIANCE application is stored and waiting for review. Platform access remains locked until a staff member approves the account.";
 
   return (

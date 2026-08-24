@@ -65,7 +65,7 @@ export default async function PendingRegistrationsPage({
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8b72ff]">Admin</div>
             <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em]">Pending registrations</h1>
-            <p className="mt-2 text-sm text-[#888891]">Real affiliate applications stored in the NEXUS development database.</p>
+            <p className="mt-2 text-sm text-[#888891]">Real affiliate applications stored in the NEXUS database.</p>
           </div>
           <Link href={`/${locale}/admin/users`} className="rounded-lg border border-white/[0.12] bg-[#18181d] px-3.5 py-2 text-sm text-[#d8d8de] hover:border-[#7657ff]/40">
             Users
@@ -100,29 +100,29 @@ export default async function PendingRegistrationsPage({
                       {application.status}
                     </span>
                   </div>
-                  <div className="mt-1 text-sm text-[#888891]">{application.user.email} В· {application.user.telegram || "No Telegram"}</div>
+                  <div className="mt-1 text-sm text-[#888891]">{application.user.email} · {application.user.telegram || "No Telegram"}</div>
                   <div className="mt-1 text-xs text-[#66666f]">Submitted {application.createdAt.toLocaleString()}</div>
                 </div>
                 <div className="text-sm text-[#9999a2]">{application.company || "Individual affiliate"}</div>
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Info label="Traffic sources" value={application.trafficSources.join(" В· ")} />
-                <Info label="Main GEOs" value={application.mainGeos.join(" В· ")} />
-                <Info label="Verticals" value={application.verticalInterests.join(" В· ")} />
-                <Info label="Estimated volume" value={application.estimatedMonthlyVolume || "вЂ”"} />
+                <Info label="Traffic sources" value={application.trafficSources.join(" · ")} />
+                <Info label="Main GEOs" value={application.mainGeos.join(" · ")} />
+                <Info label="Verticals" value={application.verticalInterests.join(" · ")} />
+                <Info label="Estimated volume" value={application.estimatedMonthlyVolume || "—"} />
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <Info label="Experience" value={application.experience || "вЂ”"} />
-                <Info label="About" value={application.about || "вЂ”"} />
+                <Info label="Experience" value={application.experience || "—"} />
+                <Info label="About" value={application.about || "—"} />
               </div>
 
               {application.status === "PENDING" ? (
                 <RegistrationActions applicationId={application.id} managers={managers} />
               ) : (
                 <div className="mt-5 rounded-xl border border-white/[0.08] bg-[#111115] p-3 text-xs text-[#888891]">
-                  Reviewed {application.reviewedAt?.toLocaleString() || "вЂ”"} by {application.reviewedBy?.name || application.reviewedBy?.email || "staff"}
-                  {application.rejectionReason ? ` В· Reason: ${application.rejectionReason}` : ""}
+                  Reviewed {application.reviewedAt?.toLocaleString() || "—"} by {application.reviewedBy?.name || application.reviewedBy?.email || "staff"}
+                  {application.rejectionReason ? ` · Reason: ${application.rejectionReason}` : ""}
                 </div>
               )}
             </article>

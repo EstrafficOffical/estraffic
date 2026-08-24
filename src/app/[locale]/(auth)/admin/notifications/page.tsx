@@ -191,6 +191,9 @@ export default async function NotificationsPage({
     recentTerms,
     problemConversions,
     lastConversion,
+    recentRegistrationUpdates,
+    recentAccessUpdates,
+    recentPayoutUpdates,
   ] = await Promise.all([
     prisma.affiliateApplication.findMany({
       where: {
@@ -408,11 +411,105 @@ export default async function NotificationsPage({
         createdAt: true,
       },
     }),
+
+    prisma.affiliateApplication.findMany({
+      where: {
+        status: {
+          in: ["APPROVED", "REJECTED"],
+        },
+        createdAt: {
+          gte: thirtyDaysAgo,
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 30,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            telegram: true,
+            tier: true,
+          },
+        },
+      },
+    }),
+
+    prisma.flowAccessRequest.findMany({
+      where: {
+        status: {
+          in: ["APPROVED", "REJECTED"],
+        },
+        createdAt: {
+          gte: thirtyDaysAgo,
+        },
+      },
+      orderBy: {
+        processedAt: "desc",
+      },
+      take: 40,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        flow: {
+          select: {
+            id: true,
+            name: true,
+            trafficSource: true,
+            market: {
+              select: {
+                geo: true,
+                brand: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+
+    prisma.nexusPayout.findMany({
+      where: {
+        status: {
+          in: ["APPROVED", "PAID", "REJECTED"],
+        },
+        requestedAt: {
+          gte: thirtyDaysAgo,
+        },
+      },
+      orderBy: {
+        requestedAt: "desc",
+      },
+      take: 40,
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        amount: true,
+        currency: true,
+        destinationLabel: true,
+        requestedAt: true,
+      },
+    }),
   ]);
 
   const payoutUserIds = Array.from(
     new Set(
-      requestedPayouts.map(
+      [
+        ...requestedPayouts,
+        ...recentPayoutUpdates,
+      ].map(
         (payout) => payout.userId,
       ),
     ),
@@ -653,6 +750,87 @@ export default async function NotificationsPage({
 
   const notifications: NotificationItem[] =
     [];
+
+  for (const application of recentRegistrationUpdates) {
+    const affiliate =
+      application.user.name ||
+      application.user.email;
+
+    notifications.push({
+      id: `registration-update:${application.id}:${application.status}`,
+      severity: "info",
+      category: "Registration",
+      title:
+        application.status === "APPROVED"
+          ? "Affiliate application approved"
+          : "Affiliate application rejected",
+      description: `${affiliate} application is ${application.status.toLowerCase()}.`,
+      detail: [
+        `Tier ${application.user.tier}`,
+        application.user.telegram ||
+          "No Telegram",
+      ].join(" / "),
+      createdAt: application.createdAt,
+      href: `/${locale}/admin/registrations`,
+      action: "Open registrations",
+    });
+  }
+
+  for (const request of recentAccessUpdates) {
+    const affiliate =
+      request.user.name ||
+      request.user.email;
+
+    notifications.push({
+      id: `access-update:${request.id}:${request.status}`,
+      severity: "info",
+      category: "Access",
+      title:
+        request.status === "APPROVED"
+          ? "Flow access approved"
+          : "Flow access rejected",
+      description: `${affiliate} / ${request.flow.market.brand.name} ${request.flow.market.geo} / ${request.flow.name}.`,
+      detail: [
+        request.flow.trafficSource,
+        `Status ${request.status}`,
+      ].join(" / "),
+      createdAt:
+        request.processedAt ||
+        request.createdAt,
+      href: `/${locale}/admin/requests`,
+      action: "Open access requests",
+    });
+  }
+
+  for (const payout of recentPayoutUpdates) {
+    const user = payoutUserById.get(
+      payout.userId,
+    );
+
+    notifications.push({
+      id: `payout-update:${payout.id}:${payout.status}`,
+      severity: "info",
+      category: "Payout",
+      title:
+        payout.status === "PAID"
+          ? "Payout paid"
+          : payout.status === "APPROVED"
+            ? "Payout approved"
+            : "Payout rejected",
+      description: `${user?.name || user?.email || "Affiliate"} / ${money(
+        Number(payout.amount),
+        payout.currency,
+      )}.`,
+      detail: [
+        payout.destinationLabel ||
+          "Destination",
+        `Status ${payout.status}`,
+      ].join(" / "),
+      createdAt: payout.requestedAt,
+      href: `/${locale}/admin/payouts`,
+      action: "Open payouts",
+    });
+  }
 
   for (const application of pendingRegistrations) {
     const affiliate =

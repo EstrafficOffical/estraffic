@@ -260,7 +260,7 @@ export default async function UsersPage({
                     <div className="mt-1 text-xs text-white/35">
                       {user.email}
                       {user.telegram
-                        ? ` В· ${user.telegram}`
+                        ? ` · ${user.telegram}`
                         : ""}
                     </div>
                   </td>
@@ -301,7 +301,7 @@ export default async function UsersPage({
                         ?.mainGeos || []),
                     ]
                       .slice(0, 4)
-                      .join(" В· ") || "вЂ”"}
+                      .join(" · ") || "—"}
                   </td>
 
                   <td className="px-4 py-4">

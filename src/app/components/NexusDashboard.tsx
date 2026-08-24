@@ -1,4 +1,5 @@
 import Link from "next/link";
+import TimeGreeting from "@/app/components/TimeGreeting";
 
 type Props = {
   locale: string;
@@ -27,7 +28,7 @@ export default function NexusDashboard({ locale, user, metrics, recentConversion
       <div className="mb-7 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8068ff]">Tier {user.tier} affiliate</div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.025em] text-white md:text-[38px]">Good morning, {firstName}.</h1>
+          <TimeGreeting firstName={firstName} />
           <p className="mt-2 text-sm text-white/42">Here is how your traffic is performing.</p>
         </div>
         <Link href={`/${locale}/offers`} className="inline-flex h-10 items-center justify-center rounded-lg border border-[#7657ff]/40 bg-[#7657ff] px-4 text-[13px] font-semibold text-white shadow-[0_10px_30px_rgba(118,87,255,.16)] transition hover:bg-[#8068ff]">Browse offers</Link>
@@ -44,7 +45,7 @@ export default function NexusDashboard({ locale, user, metrics, recentConversion
       <section className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="overflow-hidden rounded-xl border border-white/[0.075] bg-white/[0.02]">
           <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
-            <div><div className="text-sm font-semibold">Performance</div><div className="mt-1 text-xs text-white/38">Real metrics from your NEXUS development database.</div></div>
+            <div><div className="text-sm font-semibold">Performance</div><div className="mt-1 text-xs text-white/38">Real metrics from your NEXUS database.</div></div>
             <Link href={`/${locale}/stats`} className="text-xs font-medium text-[#8b73ff]">Open statistics →</Link>
           </div>
           <div className="grid min-h-[260px] place-items-center px-6 py-12 text-center">

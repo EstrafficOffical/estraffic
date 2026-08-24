@@ -246,7 +246,7 @@ export default function PartnerBrandLinker({
                           </div>
 
                           <div className="mt-1 text-[10px] text-white/28">
-                            {brand.vertical} В·{" "}
+                            {brand.vertical} ·{" "}
                             {brand.status}
                           </div>
                         </div>
@@ -294,7 +294,7 @@ export default function PartnerBrandLinker({
 
             <div className="flex flex-col-reverse gap-2 border-t border-white/[0.07] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-[10px] text-white/28">
-                {selected.length} selected В·
+                {selected.length} selected ·
                 effective flows inherit this
                 partner automatically unless a
                 flow has its own override.

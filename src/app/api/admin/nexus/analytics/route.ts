@@ -200,7 +200,34 @@ export async function GET(req: Request) {
     }),
   ]);
 
-  const affiliateById = new Map(affiliates.map((user) => [user.id, user]));
+  // Keep the affiliate filter list scoped to current approved USER accounts,
+  // but resolve table identities for every account referenced by historical
+  // clicks/conversions. A former affiliate may later become MANAGER/ADMIN
+  // and its historical performance must still show its saved name/email.
+  const activityUserIds = Array.from(
+    new Set([
+      ...clicks.map((click) => click.userId),
+      ...conversions.map((conversion) => conversion.userId),
+    ]),
+  );
+
+  const activityUsers = activityUserIds.length
+    ? await prisma.user.findMany({
+        where: {
+          id: { in: activityUserIds },
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          tier: true,
+        },
+      })
+    : [];
+
+  const affiliateById = new Map(
+    activityUsers.map((user) => [user.id, user]),
+  );
 
   type Bucket = {
     key: string;

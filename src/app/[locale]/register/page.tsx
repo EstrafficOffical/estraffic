@@ -243,13 +243,13 @@ export default function RegisterPage(props: { params: Promise<{ locale: string }
             NEXUS ALLIANCE
           </Link>
           <Link href={`/${locale}/login`} className={ghostBtn}>
-            Partner login
+            Affiliate login
           </Link>
         </div>
 
         <section className="rounded-2xl border border-white/[0.10] bg-[#0d0d10]/95 p-5 shadow-[0_24px_80px_rgba(0,0,0,.45)] sm:p-7">
           <div className="mb-6">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8b72ff]">Partner application</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8b72ff]">Affiliate application</div>
             <h1 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">Apply to NEXUS ALLIANCE</h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#888891]">
               Registration is an application. Platform access is granted only after our partnerships team reviews your profile.
@@ -347,6 +347,7 @@ export default function RegisterPage(props: { params: Promise<{ locale: string }
                 <Summary label="Email" value={form.email} />
                 <Summary label="Telegram" value={form.telegram} />
                 <Summary label="Company" value={form.company} />
+                <Summary label="About your business" value={form.about} />
                 <Summary label="Traffic" value={form.trafficSources.join(" · ")} />
                 <Summary label="GEOs" value={form.mainGeos.join(" · ")} />
                 <Summary label="Verticals" value={form.verticalInterests.join(" · ")} />

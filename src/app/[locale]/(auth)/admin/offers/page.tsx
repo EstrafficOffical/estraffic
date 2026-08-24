@@ -228,7 +228,7 @@ export default function AdminOffersPage() {
             </div>
             <h1 className="text-4xl font-semibold tracking-[-0.04em]">Offers</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-white/45">
-              Brand / market / flow / commercial terms. This workspace is backed by the live NEXUS development database.
+              Brand / market / flow / commercial terms. This workspace is backed by the live NEXUS database.
             </p>
           </div>
 

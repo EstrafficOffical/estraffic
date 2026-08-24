@@ -596,7 +596,7 @@ export default function NetworkAnalyticsPage() {
                     <th>Revenue</th>
                     <th>Payout</th>
                     <th>Margin</th>
-                    <th>REG в†’ FTD</th>
+                    <th>REG → FTD</th>
                   </tr>
                 </thead>
 
@@ -616,7 +616,7 @@ export default function NetworkAnalyticsPage() {
                             {row.email}
                             {row.tier == null
                               ? ""
-                              : ` В· Tier ${row.tier}`}
+                              : ` · Tier ${row.tier}`}
                           </div>
                         </td>
                         <td>{row.clicks}</td>
@@ -704,10 +704,10 @@ export default function NetworkAnalyticsPage() {
                             {row.flowName}
                           </div>
                         </td>
-                        <td>{row.geo || "вЂ”"}</td>
+                        <td>{row.geo || "—"}</td>
                         <td>
                           {row.trafficSource ||
-                            "вЂ”"}
+                            "—"}
                         </td>
                         <td>{row.clicks}</td>
                         <td>{row.regs}</td>

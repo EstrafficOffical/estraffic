@@ -294,7 +294,7 @@ export default async function PartnersPage({
               </h1>
 
               <span className="rounded-full border border-[#7657ff]/25 bg-[#7657ff]/10 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#9a87ff]">
-                Internal В· hidden from affiliates
+                Internal · hidden from affiliates
               </span>
             </div>
 
@@ -603,7 +603,7 @@ export default async function PartnersPage({
                               </div>
 
                               <div className="mt-1 text-[9px] uppercase tracking-[0.1em] text-white/25">
-                                {brand.vertical} В·{" "}
+                                {brand.vertical} ·{" "}
                                 {brand.status}
                               </div>
                             </div>
@@ -654,11 +654,11 @@ export default async function PartnersPage({
                                     flow.market
                                       .geo
                                   }{" "}
-                                  В·{" "}
+                                  ·{" "}
                                   {
                                     flow.trafficSource
                                   }{" "}
-                                  В·{" "}
+                                  ·{" "}
                                   {flow.partnerId
                                     ? "Partner override"
                                     : "Brand default"}

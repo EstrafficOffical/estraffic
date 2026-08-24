@@ -100,7 +100,30 @@ export async function GET() {
       tier: request.flow.tier,
       accessMode: request.flow.accessMode,
       market: request.flow.market,
-      latestTerms: request.flow.termsVersions[0] ?? null,
+      latestTerms: request.flow.termsVersions[0]
+        ? {
+            id: request.flow.termsVersions[0].id,
+            version: request.flow.termsVersions[0].version,
+            advertiserCpa:
+              request.flow.termsVersions[0].advertiserCpa == null
+                ? null
+                : String(request.flow.termsVersions[0].advertiserCpa),
+            affiliateCpa:
+              request.flow.termsVersions[0].affiliateCpa == null
+                ? null
+                : String(request.flow.termsVersions[0].affiliateCpa),
+            currency: request.flow.termsVersions[0].currency,
+            capFtd: request.flow.termsVersions[0].capFtd,
+            minDeposit:
+              request.flow.termsVersions[0].minDeposit == null
+                ? null
+                : String(request.flow.termsVersions[0].minDeposit),
+            validationTiming:
+              request.flow.termsVersions[0].validationTiming,
+            fraudHoldDays:
+              request.flow.termsVersions[0].fraudHoldDays,
+          }
+        : null,
     },
   }));
 

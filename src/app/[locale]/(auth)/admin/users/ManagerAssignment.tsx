@@ -123,7 +123,7 @@ export default function ManagerAssignment({
       {managers.map((manager) => (
         <option key={manager.id} value={manager.id}>
           {(manager.name || manager.email) +
-            ` В· ${manager.role}`}
+            ` · ${manager.role}`}
         </option>
       ))}
     </select>

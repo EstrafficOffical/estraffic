@@ -153,7 +153,7 @@ export default function NexusLanding({ locale }: { locale: string }) {
               ))}
             </nav>
             <div className="hidden items-center gap-2 sm:flex">
-              <Link href={loginHref} className={`${ghostBtn} px-3.5 py-2 text-[13px]`}>Partner login</Link>
+              <Link href={loginHref} className={`${ghostBtn} px-3.5 py-2 text-[13px]`}>Affiliate login</Link>
               <Link href={applyHref} className={`${primaryBtn} px-3.5 py-2 text-[13px]`}>Apply to join</Link>
             </div>
             <button
@@ -195,7 +195,7 @@ export default function NexusLanding({ locale }: { locale: string }) {
               </p>
               <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <Link href={applyHref} className={`${primaryBtn} w-full sm:w-auto`}>Apply to join <ArrowRight className="h-4 w-4" /></Link>
-                <Link href={loginHref} className={`${ghostBtn} w-full sm:w-auto`}>Partner login</Link>
+                <Link href={loginHref} className={`${ghostBtn} w-full sm:w-auto`}>Affiliate login</Link>
               </div>
               <p className="mt-5 text-xs text-[#777780]">Access is granted after review. Applications are assessed individually.</p>
             </div>
@@ -298,7 +298,7 @@ export default function NexusLanding({ locale }: { locale: string }) {
                 <p className="mx-auto mt-3 max-w-lg text-sm text-[#9999a2]">Applications are reviewed individually by our partnerships team. Tell us about your traffic and we will come back to you.</p>
                 <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                   <Link href={applyHref} className={`${primaryBtn} w-full sm:w-auto`}>Apply to join <ArrowRight className="h-4 w-4" /></Link>
-                  <Link href={loginHref} className={`${ghostBtn} w-full sm:w-auto`}>Partner login</Link>
+                  <Link href={loginHref} className={`${ghostBtn} w-full sm:w-auto`}>Affiliate login</Link>
                 </div>
               </div>
             </div>
