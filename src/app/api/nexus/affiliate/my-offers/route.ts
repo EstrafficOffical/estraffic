@@ -19,7 +19,9 @@ function jsonSafe(value: unknown): unknown {
     }
 
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, jsonSafe(child)]),
+      Object.entries(value as Record<string, unknown>).map(
+        ([key, child]) => [key, jsonSafe(child)],
+      ),
     );
   }
 
@@ -27,20 +29,16 @@ function jsonSafe(value: unknown): unknown {
 }
 
 async function currentUser() {
-  const session = (await getServerSession(authOptions)) as
-    | {
-        user?: {
-          id?: string;
-          email?: string | null;
-          role?: string | null;
-          status?: string | null;
-        };
-      }
-    | null;
+  const session = await getServerSession(authOptions);
   const email = session?.user?.email?.trim().toLowerCase();
 
   if (!email) {
-    return { error: NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }) };
+    return {
+      error: NextResponse.json(
+        { error: "UNAUTHORIZED" },
+        { status: 401 },
+      ),
+    };
   }
 
   const user = await prisma.user.findUnique({
@@ -53,7 +51,12 @@ async function currentUser() {
   });
 
   if (!user) {
-    return { error: NextResponse.json({ error: "ACCOUNT_NOT_FOUND" }, { status: 401 }) };
+    return {
+      error: NextResponse.json(
+        { error: "ACCOUNT_NOT_FOUND" },
+        { status: 401 },
+      ),
+    };
   }
 
   return { user };
@@ -75,7 +78,6 @@ export async function GET() {
         approvedAt: "desc",
       },
       include: {
-        termsVersion: true,
         flow: {
           include: {
             market: {
@@ -92,8 +94,11 @@ export async function GET() {
         },
       },
     }),
+
     prisma.nexusTrackingLink.findMany({
-      where: { userId: user.id },
+      where: {
+        userId: user.id,
+      },
       select: {
         flowId: true,
         token: true,
@@ -101,38 +106,82 @@ export async function GET() {
     }),
   ]);
 
-  const linkByFlow = new Map(links.map((link) => [link.flowId, link.token]));
+  const linkByFlow = new Map(
+    links.map((link) => [
+      link.flowId,
+      link.token,
+    ]),
+  );
 
-  const flows = accesses.map((access) => {
-    const token = linkByFlow.get(access.flow.id);
+  // Resolve the exact frozen version by its stored id.
+  // Do it explicitly per access so there is no relation/include ambiguity.
+  const flows = await Promise.all(
+    accesses.map(async (access) => {
+      const frozenTerms = access.termsVersionId
+        ? await prisma.flowTermsVersion.findUnique({
+            where: {
+              id: access.termsVersionId,
+            },
+          })
+        : null;
 
-    return {
-      accessId: access.id,
-      approvedAt: access.approvedAt,
-      brand: access.flow.market.brand.name,
-      vertical: access.flow.market.brand.vertical,
-      geo: access.flow.market.geo,
-      flowId: access.flow.id,
-      flowName: access.flow.name,
-      trafficSource: access.flow.trafficSource,
-      approach: access.flow.approach,
-      tier: access.flow.tier,
-      targetUrl: access.flow.targetUrl,
-      trackingTemplate: access.flow.trackingTemplate,
-      trackingPath: token ? `/r/nexus/${token}` : null,
-      terms: {
-        version: access.termsVersion?.version ?? null,
-        affiliateCpa: access.customAffiliateCpa ?? access.termsVersion?.affiliateCpa ?? null,
-        currency: access.termsVersion?.currency ?? "USD",
-        capFtd: access.customCapFtd ?? access.termsVersion?.capFtd ?? null,
-        minDeposit: access.termsVersion?.minDeposit ?? null,
-        validationTiming: access.termsVersion?.validationTiming ?? null,
-        fraudHoldDays: access.termsVersion?.fraudHoldDays ?? null,
-      },
-    };
-  });
+      const token = linkByFlow.get(access.flow.id);
 
-  return NextResponse.json(jsonSafe({ flows }));
+      const effectiveAffiliateCpa =
+        access.customAffiliateCpa ??
+        frozenTerms?.affiliateCpa ??
+        null;
+
+      const effectiveAffiliateCpaText =
+        effectiveAffiliateCpa == null
+          ? null
+          : String(effectiveAffiliateCpa);
+
+      const effectiveCapFtd =
+        access.customCapFtd ??
+        frozenTerms?.capFtd ??
+        null;
+
+      return {
+        accessId: access.id,
+        approvedAt: access.approvedAt,
+        brand: access.flow.market.brand.name,
+        vertical: access.flow.market.brand.vertical,
+        geo: access.flow.market.geo,
+        flowId: access.flow.id,
+        flowName: access.flow.name,
+        trafficSource: access.flow.trafficSource,
+        approach: access.flow.approach,
+        tier: access.flow.tier,
+        targetUrl: access.flow.targetUrl,
+        trackingTemplate: access.flow.trackingTemplate,
+        trackingPath: token
+          ? `/r/nexus/${token}`
+          : null,
+
+        // Keep both shapes for compatibility with existing UI.
+        affiliateCpa: effectiveAffiliateCpaText,
+        capFtd: effectiveCapFtd,
+        currency: frozenTerms?.currency ?? "USD",
+
+        terms: {
+          version: frozenTerms?.version ?? null,
+          affiliateCpa: effectiveAffiliateCpaText,
+          currency: frozenTerms?.currency ?? "USD",
+          capFtd: effectiveCapFtd,
+          minDeposit: frozenTerms?.minDeposit ?? null,
+          validationTiming:
+            frozenTerms?.validationTiming ?? null,
+          fraudHoldDays:
+            frozenTerms?.fraudHoldDays ?? null,
+        },
+      };
+    }),
+  );
+
+  return NextResponse.json(
+    jsonSafe({ flows }),
+  );
 }
 
 export async function POST(request: Request) {
@@ -141,54 +190,92 @@ export async function POST(request: Request) {
 
   const user = account.user;
 
-  if (user.role !== "USER" || user.status !== "APPROVED") {
-    return NextResponse.json({ error: "Approved affiliate account required" }, { status: 403 });
+  if (
+    user.role !== "USER" ||
+    user.status !== "APPROVED"
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Approved affiliate account required",
+      },
+      { status: 403 },
+    );
   }
 
   const body = await request.json().catch(() => null);
+
   const flowId =
-    body && typeof body === "object" && typeof (body as Record<string, unknown>).flowId === "string"
-      ? String((body as Record<string, unknown>).flowId)
+    body &&
+    typeof body === "object" &&
+    typeof (body as Record<string, unknown>).flowId === "string"
+      ? String(
+          (body as Record<string, unknown>).flowId,
+        )
       : "";
 
   if (!flowId) {
-    return NextResponse.json({ error: "flowId is required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "flowId is required" },
+      { status: 400 },
+    );
   }
 
-  const access = await prisma.flowAccess.findUnique({
-    where: {
-      userId_flowId: {
-        userId: user.id,
-        flowId,
-      },
-    },
-    include: {
-      flow: {
-        select: {
-          id: true,
-          status: true,
-          targetUrl: true,
+  const access =
+    await prisma.flowAccess.findUnique({
+      where: {
+        userId_flowId: {
+          userId: user.id,
+          flowId,
         },
       },
-    },
-  });
-
-  if (!access || access.status !== FlowAccessStatus.APPROVED) {
-    return NextResponse.json({ error: "Approved flow access required" }, { status: 403 });
-  }
-
-  if (access.flow.status !== "ACTIVE" || !access.flow.targetUrl) {
-    return NextResponse.json({ error: "Tracking target is not configured for this flow" }, { status: 409 });
-  }
-
-  const existing = await prisma.nexusTrackingLink.findUnique({
-    where: {
-      userId_flowId: {
-        userId: user.id,
-        flowId,
+      include: {
+        flow: {
+          select: {
+            id: true,
+            status: true,
+            targetUrl: true,
+          },
+        },
       },
-    },
-  });
+    });
+
+  if (
+    !access ||
+    access.status !==
+      FlowAccessStatus.APPROVED
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Approved flow access required",
+      },
+      { status: 403 },
+    );
+  }
+
+  if (
+    access.flow.status !== "ACTIVE" ||
+    !access.flow.targetUrl
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Tracking target is not configured for this flow",
+      },
+      { status: 409 },
+    );
+  }
+
+  const existing =
+    await prisma.nexusTrackingLink.findUnique({
+      where: {
+        userId_flowId: {
+          userId: user.id,
+          flowId,
+        },
+      },
+    });
 
   const link =
     existing ??

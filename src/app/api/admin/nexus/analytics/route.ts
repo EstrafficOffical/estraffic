@@ -18,6 +18,7 @@ type Filters = {
   geo?: string;
   flowId?: string;
   source?: string;
+  event?: string;
 };
 
 function parseDate(value: string | null, fallback: Date) {
@@ -58,6 +59,15 @@ export async function GET(req: Request) {
   const defaultTo = new Date(now);
   defaultTo.setUTCHours(23, 59, 59, 999);
 
+  const rawEvent = String(
+    url.searchParams.get("event") || "",
+  ).toUpperCase();
+
+  const event = ["REG", "DEP", "REBILL", "SALE", "LEAD"].includes(
+    rawEvent,
+  )
+    ? rawEvent
+    : undefined;
   const filters: Filters = {
     from: parseDate(url.searchParams.get("from"), defaultFrom),
     to: parseDate(url.searchParams.get("to"), defaultTo),
@@ -66,6 +76,7 @@ export async function GET(req: Request) {
     geo: url.searchParams.get("geo") || undefined,
     flowId: url.searchParams.get("flowId") || undefined,
     source: url.searchParams.get("source") || undefined,
+    event,
   };
 
   const flowRows = await prisma.flow.findMany({
@@ -128,6 +139,10 @@ export async function GET(req: Request) {
   if (filters.affiliateId) {
     clickWhere.userId = filters.affiliateId;
     conversionWhere.userId = filters.affiliateId;
+  }
+
+  if (filters.event) {
+    conversionWhere.type = filters.event as any;
   }
 
   if (hasDimensionFilter) {
@@ -488,6 +503,7 @@ export async function GET(req: Request) {
         trafficSource: flow.trafficSource,
       })),
       sources,
+      events: ["REG", "DEP", "REBILL", "SALE", "LEAD"],
     },
   });
 }

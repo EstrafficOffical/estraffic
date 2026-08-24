@@ -30,6 +30,15 @@ type Props = {
   onSaved: (patch: Partial<EditableOffer>) => void;
 };
 
+function redirectOfferEditToStepUp() {
+  const locale = window.location.pathname.split("/")[1] || "en";
+  window.location.assign(
+    `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
+      window.location.pathname,
+    )}`,
+  );
+}
+
 export default function EditOfferModal({ open, offer, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -123,6 +132,15 @@ export default function EditOfferModal({ open, offer, onClose, onSaved }: Props)
       });
 
       const data = await res.json().catch(() => ({}));
+
+      if (
+        res.status === 428 &&
+        data?.error === "STEP_UP_REQUIRED"
+      ) {
+        redirectOfferEditToStepUp();
+        return;
+      }
+
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error || "Не удалось сохранить");
       }

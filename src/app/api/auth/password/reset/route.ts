@@ -200,7 +200,11 @@ export async function POST(req: Request) {
         },
         data: {
           passwordHash,
+          authVersion: { increment: 1 },
         },
+      }),
+      prisma.nexusLoginChallenge.deleteMany({
+        where: { userId: user.id },
       }),
       prisma.verificationToken.deleteMany({
         where: {

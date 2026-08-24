@@ -20,7 +20,7 @@ const num = (n: number) => new Intl.NumberFormat("en-US").format(n || 0);
 
 export default function NexusDashboard({ locale, user, metrics, recentConversions }: Props) {
   const firstName = (user.name || user.email || "Partner").split(/[\s@]/)[0];
-  const regToFtd = metrics.registrations ? (metrics.ftd / metrics.registrations) * 100 : 0;
+  const regToFtd = metrics.registrations > 0 ? (metrics.ftd / metrics.registrations) * 100 : null;
 
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-7 md:px-7 md:py-8">
@@ -38,7 +38,7 @@ export default function NexusDashboard({ locale, user, metrics, recentConversion
         <Metric label="FTD" value={num(metrics.ftd)} />
         <Metric label="Registrations" value={num(metrics.registrations)} />
         <Metric label="Clicks" value={num(metrics.clicks)} />
-        <Metric label="Reg → FTD" value={`${regToFtd.toFixed(2)}%`} />
+        <Metric label="Reg → FTD" value={regToFtd == null ? "N/A" : `${regToFtd == null ? "N/A" : `${regToFtd.toFixed(2)}%`}`} />
       </section>
 
       <section className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">

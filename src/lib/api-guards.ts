@@ -1,5 +1,6 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "./auth";
+import { hasRecentStepUp } from "./nexus-step-up";
 
 const STAFF_ROLES = new Set(["OWNER", "ADMIN", "MANAGER"]);
 const ADMIN_ROLES = new Set(["OWNER", "ADMIN"]);
@@ -119,6 +120,33 @@ export async function requireAdmin() {
     return {
       session,
       res: forbidden("Two-factor authentication required"),
+    };
+  }
+
+  return { session, res: null as any };
+}
+
+export async function requireAdminStepUp() {
+  const { session, res } = await requireAdmin();
+
+  if (res) {
+    return { session, res };
+  }
+
+  const userId = String((session!.user as any)?.id || "");
+
+  if (!userId || !(await hasRecentStepUp(userId))) {
+    return {
+      session,
+      res: NextResponse.json(
+        { error: "STEP_UP_REQUIRED" },
+        {
+          status: 428,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
+      ),
     };
   }
 

@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireAdminStepUp } from "@/lib/api-guards";
 
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user || (session.user as any).role !== "ADMIN") {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const { res } = await requireAdminStepUp();
+  if (res) return res;
+
   const body = await req.json().catch(() => ({} as any));
   const { offerId, hidden } = body || {};
+
   if (!offerId || typeof hidden !== "boolean") {
     return NextResponse.json({ error: "MISSING_FIELDS" }, { status: 400 });
   }

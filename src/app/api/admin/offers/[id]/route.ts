@@ -1,26 +1,34 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireAdminStepUp } from "@/lib/api-guards";
 
-export async function DELETE(_req: Request, props: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  _req: Request,
+  props: { params: Promise<{ id: string }> },
+) {
   const params = await props.params;
-  const session = await auth();
-  if (!session?.user || (session.user as any).role !== "ADMIN") {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const { res } = await requireAdminStepUp();
+  if (res) return res;
 
   const id = params.id;
-  if (!id) return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+  if (!id) {
+    return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+  }
 
-  // запретим удаление, если есть клики или конверсии
   const [clicks, convs] = await Promise.all([
     prisma.click.count({ where: { offerId: id } }),
     prisma.conversion.count({ where: { offerId: id } }),
   ]);
+
   if (clicks > 0 || convs > 0) {
     return NextResponse.json(
-      { error: "HAS_DEPENDENCIES", clicks, conversions: convs, hint: "Use ARCHIVE instead" },
-      { status: 400 }
+      {
+        error: "HAS_DEPENDENCIES",
+        clicks,
+        conversions: convs,
+        hint: "Use ARCHIVE instead",
+      },
+      { status: 400 },
     );
   }
 

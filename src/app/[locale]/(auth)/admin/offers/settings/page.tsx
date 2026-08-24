@@ -68,7 +68,22 @@ export default function OfferSettingsPage() {
         }),
       });
       const j = await r.json();
-      if (!r.ok || !j?.ok) throw new Error(j?.error || "Failed");
+
+      if (
+        r.status === 428 &&
+        j?.error === "STEP_UP_REQUIRED"
+      ) {
+        window.location.assign(
+          `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
+            window.location.pathname,
+          )}`,
+        );
+        return;
+      }
+
+      if (!r.ok || !j?.ok) {
+        throw new Error(j?.error || "Failed");
+      }
       setMsg("Сохранено");
       setRows((s) => s.map((x) => (x.id === row.id ? { ...x, ...j.offer } : x)));
     } catch (e: any) {

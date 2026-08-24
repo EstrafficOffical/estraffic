@@ -75,6 +75,7 @@ export async function POST(_req: Request, props: { params: Promise<{ id: string 
       role: "USER",
       tier: 3,
       assignedManagerId: null,
+      authVersion: { increment: 1 },
     },
   });
 

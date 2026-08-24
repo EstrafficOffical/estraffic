@@ -70,18 +70,27 @@ export async function POST(req: Request) {
   const recoveryHashes = recoveryCodes.map(hashRecoveryCode);
   const now = new Date();
 
-  await prisma.nexusTwoFactor.update({
-    where: { userId },
-    data: {
-      enabled: true,
-      secretEnc: factor.pendingSecretEnc,
-      pendingSecretEnc: null,
-      setupExpiresAt: null,
-      recoveryHashes,
-      confirmedAt: now,
-      lastUsedAt: now,
-    },
-  });
+  await prisma.$transaction([
+    prisma.nexusTwoFactor.update({
+      where: { userId },
+      data: {
+        enabled: true,
+        secretEnc: factor.pendingSecretEnc,
+        pendingSecretEnc: null,
+        setupExpiresAt: null,
+        recoveryHashes,
+        confirmedAt: now,
+        lastUsedAt: now,
+      },
+    }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { authVersion: { increment: 1 } },
+    }),
+    prisma.nexusLoginChallenge.deleteMany({
+      where: { userId },
+    }),
+  ]);
 
   return NextResponse.json(
     {

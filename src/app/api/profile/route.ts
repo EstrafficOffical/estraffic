@@ -33,7 +33,7 @@ export async function GET() {
       role: true,
       status: true,
       tier: true,
-      assignedManager: { select: { name: true, email: true, telegram: true } },
+      assignedManager: { select: { name: true, telegram: true } },
       application: {
         select: {
           company: true, trafficSources: true, mainGeos: true, verticalInterests: true,
@@ -64,7 +64,10 @@ export async function PATCH(req: Request) {
   const data: any = {};
   if (payload.name !== undefined) data.name = payload.name || null;
   if (payload.telegram !== undefined) data.telegram = payload.telegram || null;
-  if (payload.email !== undefined) data.email = payload.email.toLowerCase();
+  if (payload.email !== undefined) {
+    data.email = payload.email.toLowerCase();
+    data.authVersion = { increment: 1 };
+  }
   if (payload.image !== undefined) data.image = payload.image || null; // 👈 пишем/очищаем аватар
 
   try {
@@ -73,6 +76,12 @@ export async function PATCH(req: Request) {
       data,
       select: { id: true, email: true, name: true, telegram: true, image: true },
     });
+
+    if (payload.email !== undefined) {
+      await prisma.nexusLoginChallenge.deleteMany({
+        where: { userId: id },
+      });
+    }
 
     return NextResponse.json({ ok: true, user: updated });
   } catch (e: any) {

@@ -73,7 +73,7 @@ export async function GET(req: Request) {
 
     prisma.nexusConversion
       .groupBy({
-        by: ["createdAt"],
+        by: ["createdAt", "type"],
         where: {
           userId,
           status: "APPROVED",
@@ -107,6 +107,8 @@ export async function GET(req: Request) {
     {
       conversions: number;
       revenue: number;
+      regs: number;
+      deps: number;
     }
   >();
 
@@ -115,10 +117,22 @@ export async function GET(req: Request) {
     const current = conversionMap.get(key) ?? {
       conversions: 0,
       revenue: 0,
+      regs: 0,
+      deps: 0,
     };
 
-    current.conversions += row._count._all ?? 0;
+    const count = row._count._all ?? 0;
+
+    current.conversions += count;
     current.revenue += Number(row._sum.affiliatePayout ?? 0);
+
+    if (row.type === "REG") {
+      current.regs += count;
+    }
+
+    if (row.type === "DEP") {
+      current.deps += count;
+    }
 
     conversionMap.set(key, current);
   }
@@ -128,6 +142,8 @@ export async function GET(req: Request) {
     clicks: number;
     conversions: number;
     revenue: number;
+    regs: number;
+    deps: number;
   }> = [];
 
   for (let day = from; day < to; day = addDays(day, 1)) {
@@ -139,6 +155,8 @@ export async function GET(req: Request) {
       clicks: clickMap.get(key) ?? 0,
       conversions: conversion?.conversions ?? 0,
       revenue: conversion?.revenue ?? 0,
+      regs: conversion?.regs ?? 0,
+      deps: conversion?.deps ?? 0,
     });
   }
 

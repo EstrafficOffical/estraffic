@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
 import NexusLanding from "@/app/components/NexusLanding";
 import NexusAppShell from "@/app/components/NexusAppShell";
 import NexusDashboard from "@/app/components/NexusDashboard";
@@ -50,6 +51,14 @@ export default async function HomePage(
     return <NexusLanding locale={locale} />;
   }
 
+  if (user.role === "MANAGER") {
+    redirect(`/${locale}/manager/affiliates`);
+  }
+
+  if (["OWNER", "ADMIN"].includes(user.role)) {
+    redirect(`/${locale}/admin/stats`);
+  }
+
   const [
     clicks,
     registrations,
@@ -57,6 +66,7 @@ export default async function HomePage(
     revenueAgg,
     paidAgg,
     pendingPayoutAgg,
+    financeLedgerRows,
     approvedOffers,
     recent,
   ] = await Promise.all([
@@ -108,6 +118,26 @@ export default async function HomePage(
       _sum: {
         amount: true,
       },
+    }),
+
+    prisma.nexusFinanceLedger.groupBy({
+
+      by: ["bucket"],
+
+      where: {
+
+        userId,
+
+        currency: "USD",
+
+      },
+
+      _sum: {
+
+        amount: true,
+
+      },
+
     }),
 
     prisma.flowAccess.count({
@@ -173,12 +203,15 @@ export default async function HomePage(
   );
 
   const revenue = Number(revenueAgg._sum.affiliatePayout || 0);
-  const paid = Number(paidAgg._sum.amount || 0);
-  const pendingPayouts = Number(pendingPayoutAgg._sum.amount || 0);
+  const ledgerBalance = (bucket: string) =>
+    Number(
+      financeLedgerRows.find(
+        (row) => String(row.bucket) === bucket,
+      )?._sum.amount || 0,
+    );
 
-  // Temporary dashboard balance bridge.
-  // Finance ledger becomes authoritative in the finance step.
-  const available = Math.max(0, revenue - paid - pendingPayouts);
+  const available = ledgerBalance("AVAILABLE");
+  const pendingBalance = ledgerBalance("PENDING");
 
   return (
     <NexusAppShell
@@ -204,7 +237,7 @@ export default async function HomePage(
           registrations,
           ftd,
           available,
-          pendingPayouts,
+          pendingPayouts: pendingBalance,
           approvedOffers,
         }}
         recentConversions={recent.map((conversion) => ({

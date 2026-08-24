@@ -116,6 +116,15 @@ function badge(value: string) {
   );
 }
 
+function redirectAdminOffersToStepUp() {
+  const locale = window.location.pathname.split("/")[1] || "en";
+  window.location.assign(
+    `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
+      window.location.pathname,
+    )}`,
+  );
+}
+
 export default function AdminOffersPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -160,8 +169,17 @@ export default function AdminOffersPage() {
     });
     const json = await res.json().catch(() => ({}));
     setBusy(false);
+
+    if (
+      res.status === 428 &&
+      json?.error === "STEP_UP_REQUIRED"
+    ) {
+      redirectAdminOffersToStepUp();
+      return null;
+    }
+
     if (!res.ok) {
-      setError(json?.error || "Action failed");
+      setError(json?.message || json?.error || "Action failed");
       return null;
     }
     await load();
@@ -338,13 +356,53 @@ export default function AdminOffersPage() {
                           </span>
                         </div>
                         {writable && (
-                          <button
-                            className={shell.secondary}
-                            onClick={() => setMarketForBrand(marketForBrand === brand.id ? null : brand.id)}
-                          >
-                            + Add market
-                          </button>
-                        )}
+                           <div className="flex flex-wrap gap-2">
+                             <button
+                               className={shell.secondary}
+                               onClick={() =>
+                                 setMarketForBrand(
+                                   marketForBrand === brand.id
+                                     ? null
+                                     : brand.id,
+                                 )
+                               }
+                             >
+                               + Add market
+                             </button>
+
+                             <button
+                               type="button"
+                               disabled={busy}
+                               className="inline-flex h-10 items-center justify-center rounded-xl border border-rose-400/25 bg-rose-400/[0.055] px-3 text-sm font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40"
+                               onClick={async () => {
+                                 if (
+                                   !confirm(
+                                     `Permanently delete brand "${brand.name}"? This is allowed only when the brand contains no flows. Empty GEOs will be removed with it.`,
+                                   )
+                                 ) {
+                                   return;
+                                 }
+
+                                 const ok = await mutate({
+                                   action: "deleteBrand",
+                                   brandId: brand.id,
+                                 });
+
+                                 if (ok) {
+                                   if (expanded === brand.id) {
+                                     setExpanded(null);
+                                   }
+
+                                   if (marketForBrand === brand.id) {
+                                     setMarketForBrand(null);
+                                   }
+                                 }
+                               }}
+                             >
+                               Delete brand
+                             </button>
+                           </div>
+                         )}
                       </div>
 
                       {marketForBrand === brand.id && writable && (
@@ -376,13 +434,50 @@ export default function AdminOffersPage() {
                                   {badge(market.status)}
                                 </div>
                                 {writable && (
-                                  <button
-                                    className={shell.secondary}
-                                    onClick={() => setFlowForMarket(flowForMarket === market.id ? null : market.id)}
-                                  >
-                                    + Add flow
-                                  </button>
-                                )}
+                                   <div className="flex flex-wrap gap-2">
+                                     <button
+                                       className={shell.secondary}
+                                       onClick={() =>
+                                         setFlowForMarket(
+                                           flowForMarket === market.id
+                                             ? null
+                                             : market.id,
+                                         )
+                                       }
+                                     >
+                                       + Add flow
+                                     </button>
+
+                                     <button
+                                       type="button"
+                                       disabled={busy}
+                                       className="inline-flex h-10 items-center justify-center rounded-xl border border-rose-400/25 bg-rose-400/[0.055] px-3 text-sm font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40"
+                                       onClick={async () => {
+                                         if (
+                                           !confirm(
+                                             `Permanently delete GEO "${brand.name} / ${market.geo}"? This is allowed only when the GEO contains no flows.`,
+                                           )
+                                         ) {
+                                           return;
+                                         }
+
+                                         const ok = await mutate({
+                                           action: "deleteMarket",
+                                           marketId: market.id,
+                                         });
+
+                                         if (
+                                           ok &&
+                                           flowForMarket === market.id
+                                         ) {
+                                           setFlowForMarket(null);
+                                         }
+                                       }}
+                                     >
+                                       Delete GEO
+                                     </button>
+                                   </div>
+                                 )}
                               </div>
 
                               {flowForMarket === market.id && writable && (
@@ -415,7 +510,7 @@ export default function AdminOffersPage() {
                                         <th className="px-4 py-3 font-semibold">Cap</th>
                                         <th className="px-4 py-3 font-semibold">Access</th>
                                         <th className="px-4 py-3 font-semibold">Status</th>
-                                        <th className="px-4 py-3 font-semibold">Terms</th>
+                                        <th className="px-4 py-3 font-semibold">Terms / Actions</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -469,7 +564,67 @@ export default function AdminOffersPage() {
                                                   </button>
                                                 </div>
                                               )}
-                                            </td>
+                                            
+                                               {writable && (
+                                                 <div className="mt-3 flex min-w-[110px] flex-col gap-2 border-t border-white/[0.06] pt-3">
+                                                   {flow.status !== "ARCHIVED" && (
+                                                     <button
+                                                       type="button"
+                                                       disabled={busy}
+                                                       className="rounded-lg border border-amber-400/20 bg-amber-400/[0.055] px-3 py-2 text-xs font-semibold text-amber-300 transition hover:bg-amber-400/10 disabled:opacity-40"
+                                                       onClick={async () => {
+                                                         if (
+                                                           !confirm(
+                                                             `Archive "${brand.name} / ${market.geo} / ${flow.name}"? The flow will stop being active, but its history stays intact.`,
+                                                           )
+                                                         ) {
+                                                           return;
+                                                         }
+
+                                                         await mutate({
+                                                           action: "archiveFlow",
+                                                           flowId: flow.id,
+                                                         });
+                                                       }}
+                                                     >
+                                                       Archive
+                                                     </button>
+                                                   )}
+
+                                                   <button
+                                                     type="button"
+                                                     disabled={busy}
+                                                     className="rounded-lg border border-rose-400/25 bg-rose-400/[0.055] px-3 py-2 text-xs font-semibold text-rose-300 transition hover:bg-rose-400/10 disabled:opacity-40"
+                                                     onClick={async () => {
+                                                       if (
+                                                         !confirm(
+                                                           `Permanently delete "${brand.name} / ${market.geo} / ${flow.name}"? Only unused flows can be deleted. This cannot be undone.`,
+                                                         )
+                                                       ) {
+                                                         return;
+                                                       }
+
+                                                       const ok =
+                                                         await mutate({
+                                                           action: "deleteFlow",
+                                                           flowId: flow.id,
+                                                         });
+
+                                                       if (
+                                                         ok &&
+                                                         termsForFlow ===
+                                                           flow.id
+                                                       ) {
+                                                         setTermsForFlow(
+                                                           null,
+                                                         );
+                                                       }
+                                                     }}
+                                                   >
+                                                     Delete
+                                                   </button>
+                                                 </div>
+                                               )}</td>
                                           </tr>
                                         );
                                       })}

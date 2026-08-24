@@ -58,6 +58,7 @@ declare module "next-auth/jwt" {
     name?: string | null;
     picture?: string | null;
     tier?: number;
+    authVersion?: number;
     twoFactorEnabled?: boolean;
     twoFactorVerified?: boolean;
   }
@@ -72,6 +73,7 @@ function userPayload(
     role: Role;
     status: UserStatus;
     tier: number;
+    authVersion: number;
   },
   twoFactorEnabled: boolean,
   twoFactorVerified: boolean,
@@ -84,9 +86,21 @@ function userPayload(
     role: user.role,
     status: user.status,
     tier: user.tier ?? 3,
+    authVersion: user.authVersion ?? 0,
     twoFactorEnabled,
     twoFactorVerified,
   } as any;
+}
+
+function revokeJwtToken(token: any) {
+  token.id = "";
+  token.email = null;
+  token.role = "USER";
+  token.status = "BANNED";
+  token.authVersion = -1;
+  token.twoFactorEnabled = false;
+  token.twoFactorVerified = false;
+  return token;
 }
 
 const credentialsProvider = Credentials({
@@ -230,6 +244,7 @@ const credentialsProvider = Credentials({
                 role: user.role as Role,
                 status: user.status as UserStatus,
                 tier: user.tier,
+                authVersion: user.authVersion,
               },
               true,
               true,
@@ -292,6 +307,7 @@ const credentialsProvider = Credentials({
           role: user.role as Role,
           status: user.status as UserStatus,
           tier: user.tier,
+          authVersion: user.authVersion,
         },
         false,
         false,
@@ -362,6 +378,7 @@ export const authOptions: NextAuthOptions = {
             id: true,
             role: true,
             status: true,
+            authVersion: true,
             twoFactor: {
               select: {
                 enabled: true,
@@ -373,6 +390,13 @@ export const authOptions: NextAuthOptions = {
         if (!dbUser || dbUser.status !== "APPROVED") {
           return false;
         }
+
+        (user as any).id = dbUser.id;
+        (user as any).role = dbUser.role;
+        (user as any).status = dbUser.status;
+        (user as any).authVersion = dbUser.authVersion;
+        (user as any).twoFactorEnabled =
+          Boolean(dbUser.twoFactor?.enabled);
 
         const requiresTwoFactor =
           isTwoFactorRequiredForRole(dbUser.role) ||
@@ -401,6 +425,9 @@ export const authOptions: NextAuthOptions = {
         token.name = (user as any).name ?? token.name;
         token.picture = (user as any).image ?? token.picture;
         token.tier = (user as any).tier ?? 3;
+        token.authVersion = Number(
+          (user as any).authVersion ?? 0,
+        );
         token.twoFactorEnabled = Boolean(
           (user as any).twoFactorEnabled,
         );
@@ -420,6 +447,7 @@ export const authOptions: NextAuthOptions = {
               id: true,
               role: true,
               status: true,
+              authVersion: true,
               name: true,
               image: true,
               tier: true,
@@ -432,12 +460,23 @@ export const authOptions: NextAuthOptions = {
           });
 
           if (dbUser) {
+            const tokenAuthVersion = Number(
+              token.authVersion ?? 0,
+            );
+
+            if (
+              tokenAuthVersion !== dbUser.authVersion
+            ) {
+              return revokeJwtToken(token);
+            }
+
             token.id = dbUser.id;
             token.role = dbUser.role as Role;
             token.status = dbUser.status as UserStatus;
             token.name = dbUser.name ?? token.name;
             token.picture = dbUser.image ?? token.picture;
             token.tier = dbUser.tier ?? token.tier ?? 3;
+            token.authVersion = dbUser.authVersion;
             token.twoFactorEnabled = Boolean(
               dbUser.twoFactor?.enabled,
             );
@@ -446,14 +485,11 @@ export const authOptions: NextAuthOptions = {
               token.twoFactorVerified = false;
             }
           } else {
-            token.id = "";
-            token.role = "USER";
-            token.status = "BANNED";
-            token.twoFactorEnabled = false;
-            token.twoFactorVerified = false;
+            return revokeJwtToken(token);
           }
         } catch (error) {
           console.error("[AUTH] jwt user refresh failed", error);
+          return revokeJwtToken(token);
         }
       }
 
@@ -507,8 +543,11 @@ export const authOptions: NextAuthOptions = {
 export async function auth() {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user) {
-    return session;
+  if (
+    !session?.user?.id ||
+    session.user.status !== "APPROVED"
+  ) {
+    return null;
   }
 
   const requiresTwoFactor =

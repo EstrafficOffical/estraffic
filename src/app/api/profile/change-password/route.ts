@@ -73,7 +73,13 @@ export async function POST(req: Request) {
   await prisma.$transaction([
     prisma.user.update({
       where: { id },
-      data: { passwordHash },
+      data: {
+        passwordHash,
+        authVersion: { increment: 1 },
+      },
+    }),
+    prisma.nexusLoginChallenge.deleteMany({
+      where: { userId: id },
     }),
     prisma.verificationToken.deleteMany({
       where: { identifier: user.email },

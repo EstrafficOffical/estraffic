@@ -38,7 +38,8 @@ const icons = {
 export default function NexusAppShell({ children, locale, user }: Props) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const isStaff = ["MANAGER", "ADMIN", "OWNER"].includes(user.role);
+  const isAffiliate = user.role === "USER";
+  const isManager = user.role === "MANAGER";
   const isAdmin = ["ADMIN", "OWNER"].includes(user.role);
 
   const affiliateNav = useMemo<NavItem[]>(() => [
@@ -47,13 +48,16 @@ export default function NexusAppShell({ children, locale, user }: Props) {
     { href: `/${locale}/offers/mine`, label: "My Offers", icon: icons.myOffers },
     { href: `/${locale}/stats`, label: "Statistics", icon: icons.stats },
     { href: `/${locale}/finance`, label: "Finance", icon: icons.finance },
+    { href: `/${locale}/notifications`, label: "Notifications", icon: icons.requests },
     { href: `/${locale}/profile`, label: "Profile", icon: icons.profile },
   ], [locale]);
 
   const adminNav = useMemo<NavItem[]>(() => [
-    { href: `/${locale}/admin/stats`, label: "Control Center", icon: icons.control },
-    { href: `/${locale}/admin/analytics`, label: "Network Analytics", icon: icons.stats },
+    { href: `/${locale}/admin/stats`, label: "Dashboard", icon: icons.control },
+    { href: `/${locale}/admin/control-center`, label: "Control Center", icon: icons.control },
+    { href: `/${locale}/admin/analytics`, label: "Statistics", icon: icons.stats },
     { href: `/${locale}/admin/offers`, label: "Offers", icon: icons.offers },
+    { href: `/${locale}/admin/partners`, label: "Partners", icon: icons.users },
     { href: `/${locale}/admin/requests`, label: "Access Requests", icon: icons.requests },
     { href: `/${locale}/admin/registrations`, label: "Registrations", icon: icons.requests },
     { href: `/${locale}/admin/users`, label: "Users", icon: icons.users },
@@ -61,6 +65,15 @@ export default function NexusAppShell({ children, locale, user }: Props) {
     { href: `/${locale}/conversions`, label: "Conversions", icon: icons.conversions },
     { href: `/${locale}/admin/payouts`, label: "Payouts", icon: icons.conversions },
     { href: `/${locale}/postbacks`, label: "Integrations", icon: icons.integrations },
+    { href: `/${locale}/admin/notifications`, label: "Notifications", icon: icons.requests },
+    { href: `/${locale}/admin/audit-log`, label: "Audit Log", icon: icons.control },
+    { href: `/${locale}/profile`, label: "Profile", icon: icons.profile },
+  ], [locale]);
+
+  const managerNav = useMemo<NavItem[]>(() => [
+    { href: `/${locale}/manager/affiliates`, label: "My Affiliates", icon: icons.users },
+    { href: `/${locale}/conversions`, label: "Conversions", icon: icons.conversions },
+    { href: `/${locale}/profile`, label: "Profile", icon: icons.profile },
   ], [locale]);
 
   const initials = (user.name || user.email || "NA")
@@ -85,10 +98,17 @@ export default function NexusAppShell({ children, locale, user }: Props) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-5">
-        <NavSection title="Affiliate" items={affiliateNav} isActive={isActive} onNavigate={() => setMobileOpen(false)} />
-        {isStaff && (
+        {isAffiliate && (
+          <NavSection title="Affiliate" items={affiliateNav} isActive={isActive} onNavigate={() => setMobileOpen(false)} />
+        )}
+        {isManager && (
+          <div>
+            <NavSection title="Management" items={managerNav} isActive={isActive} onNavigate={() => setMobileOpen(false)} accent />
+          </div>
+        )}
+        {isAdmin && (
           <div className="mt-5 border-t border-white/[0.07] pt-5">
-            <NavSection title="Administration" items={isAdmin ? adminNav : adminNav.filter((i) => ["Access Requests", "Registrations", "Users", "Team & Roles"].includes(i.label))} isActive={isActive} onNavigate={() => setMobileOpen(false)} accent />
+            <NavSection title="Administration" items={adminNav} isActive={isActive} onNavigate={() => setMobileOpen(false)} accent />
           </div>
         )}
       </nav>

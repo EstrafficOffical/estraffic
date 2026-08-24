@@ -131,6 +131,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
       data: {
         role: next as any,
         status: "APPROVED",
+        authVersion: { increment: 1 },
       },
     });
 
@@ -193,6 +194,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
           action === "suspend"
             ? "SUSPENDED"
             : "APPROVED",
+        authVersion: { increment: 1 },
       },
     });
 
@@ -259,6 +261,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
         role: "USER",
         tier: 3,
         assignedManagerId: null,
+        authVersion: { increment: 1 },
       },
     });
 

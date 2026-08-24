@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { FlowAccessMode, FlowAccessStatus, RequestStatus } from "@prisma/client";
+import {
+  FlowAccessMode,
+  FlowAccessStatus,
+  RequestStatus,
+} from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -8,6 +12,7 @@ function jsonSafe(value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(jsonSafe);
+
   if (typeof value === "object") {
     if (
       "toString" in (value as Record<string, unknown>) &&
@@ -17,9 +22,12 @@ function jsonSafe(value: unknown): unknown {
     }
 
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, jsonSafe(child)]),
+      Object.entries(value as Record<string, unknown>).map(
+        ([key, child]) => [key, jsonSafe(child)],
+      ),
     );
   }
+
   return value;
 }
 
@@ -28,7 +36,12 @@ async function currentAccount() {
   const email = session?.user?.email?.trim().toLowerCase();
 
   if (!email) {
-    return { error: NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 }) };
+    return {
+      error: NextResponse.json(
+        { error: "UNAUTHORIZED" },
+        { status: 401 },
+      ),
+    };
   }
 
   const user = await prisma.user.findUnique({
@@ -43,15 +56,34 @@ async function currentAccount() {
   });
 
   if (!user) {
-    return { error: NextResponse.json({ error: "ACCOUNT_NOT_FOUND" }, { status: 401 }) };
+    return {
+      error: NextResponse.json(
+        { error: "ACCOUNT_NOT_FOUND" },
+        { status: 401 },
+      ),
+    };
   }
 
   return { user };
 }
 
+async function resolveFrozenTerms(
+  termsVersionId: string | null,
+) {
+  if (!termsVersionId) return null;
+
+  return prisma.flowTermsVersion.findUnique({
+    where: {
+      id: termsVersionId,
+    },
+  });
+}
 export async function GET() {
   const account = await currentAccount();
-  if ("error" in account) return account.error;
+
+  if ("error" in account) {
+    return account.error;
+  }
 
   const user = account.user;
 
@@ -94,28 +126,89 @@ export async function GET() {
     },
   });
 
-  const visible = flows
+  const frozenTermsIds = Array.from(
+    new Set(
+      flows
+        .map((flow) => flow.accesses[0]?.termsVersionId ?? null)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  const frozenTermsRows = frozenTermsIds.length
+    ? await prisma.flowTermsVersion.findMany({
+        where: {
+          id: { in: frozenTermsIds },
+        },
+      })
+    : [];
+
+  const frozenTermsById = new Map(
+    frozenTermsRows.map((row) => [row.id, row]),
+  );
+
+  const visible = await Promise.all(flows
     .filter((flow) => {
       const access = flow.accesses[0];
-      if (flow.accessMode !== FlowAccessMode.PRIVATE) return true;
+
+      if (flow.accessMode !== FlowAccessMode.PRIVATE) {
+        return true;
+      }
+
       return access?.status === FlowAccessStatus.APPROVED;
     })
-    .map((flow) => {
-      const terms = flow.termsVersions[0] ?? null;
+    .map(async (flow) => {
+      const latestTerms = flow.termsVersions[0] ?? null;
       const access = flow.accesses[0] ?? null;
       const request = flow.accessRequests[0] ?? null;
 
-      let accessStatus: "NONE" | "PENDING" | "APPROVED" | "REJECTED" | "REVOKED" = "NONE";
+      let accessStatus:
+        | "NONE"
+        | "PENDING"
+        | "APPROVED"
+        | "REJECTED"
+        | "REVOKED" = "NONE";
 
       if (access?.status === FlowAccessStatus.APPROVED) {
         accessStatus = "APPROVED";
-      } else if (request?.status === RequestStatus.PENDING || access?.status === FlowAccessStatus.PENDING) {
+      } else if (
+        request?.status === RequestStatus.PENDING ||
+        access?.status === FlowAccessStatus.PENDING
+      ) {
         accessStatus = "PENDING";
       } else if (request?.status === RequestStatus.REJECTED) {
         accessStatus = "REJECTED";
       } else if (access?.status === FlowAccessStatus.REVOKED) {
         accessStatus = "REVOKED";
       }
+
+      const approved =
+        access?.status === FlowAccessStatus.APPROVED;
+
+      const frozenTerms =
+        approved && access?.termsVersionId
+          ? await resolveFrozenTerms(access.termsVersionId)
+          : null;
+
+      const effectiveTerms = approved
+        ? frozenTerms
+        : latestTerms;
+
+      const affiliateCpa = approved
+        ? access?.customAffiliateCpa ??
+          frozenTerms?.affiliateCpa ??
+          null
+        : latestTerms?.affiliateCpa ?? null;
+
+      const affiliateCpaText =
+        affiliateCpa == null
+          ? null
+          : String(affiliateCpa);
+
+      const capFtd = approved
+        ? access?.customCapFtd ??
+          frozenTerms?.capFtd ??
+          null
+        : latestTerms?.capFtd ?? null;
 
       return {
         id: flow.id,
@@ -128,15 +221,20 @@ export async function GET() {
         approach: flow.approach,
         tier: flow.tier,
         accessMode: flow.accessMode,
-        affiliateCpa: terms?.affiliateCpa ?? null,
-        currency: terms?.currency ?? "USD",
-        capFtd: terms?.capFtd ?? null,
-        minDeposit: terms?.minDeposit ?? null,
-        validationTiming: terms?.validationTiming ?? null,
-        fraudHoldDays: terms?.fraudHoldDays ?? null,
+
+        affiliateCpa: affiliateCpaText,
+        currency: effectiveTerms?.currency ?? "USD",
+        capFtd,
+        minDeposit: effectiveTerms?.minDeposit ?? null,
+        validationTiming:
+          effectiveTerms?.validationTiming ?? null,
+        fraudHoldDays: effectiveTerms?.fraudHoldDays ?? null,
+
         accessStatus,
+        approvedTermsVersion: frozenTerms?.version ?? null,
+        latestTermsVersion: latestTerms?.version ?? null,
       };
-    });
+    }));
 
   return NextResponse.json(
     jsonSafe({
@@ -149,29 +247,41 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const account = await currentAccount();
-  if ("error" in account) return account.error;
+
+  if ("error" in account) {
+    return account.error;
+  }
 
   const user = account.user;
 
   if (user.role !== "USER") {
     return NextResponse.json(
-      { error: "Staff accounts can preview the affiliate catalog but cannot request affiliate access." },
+      { error: "Staff accounts cannot request affiliate access." },
       { status: 403 },
     );
   }
 
   if (user.status !== "APPROVED") {
-    return NextResponse.json({ error: "Your affiliate account is not approved." }, { status: 403 });
+    return NextResponse.json(
+      { error: "Your affiliate account is not approved." },
+      { status: 403 },
+    );
   }
 
   const body = await request.json().catch(() => null);
+
   const flowId =
-    body && typeof body === "object" && typeof (body as Record<string, unknown>).flowId === "string"
+    body &&
+    typeof body === "object" &&
+    typeof (body as Record<string, unknown>).flowId === "string"
       ? String((body as Record<string, unknown>).flowId)
       : "";
 
   if (!flowId) {
-    return NextResponse.json({ error: "flowId is required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "flowId is required" },
+      { status: 400 },
+    );
   }
 
   const flow = await prisma.flow.findFirst({
@@ -200,22 +310,33 @@ export async function POST(request: Request) {
   });
 
   if (!flow) {
-    return NextResponse.json({ error: "Flow is not available for your account." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Flow is not available for your account." },
+      { status: 404 },
+    );
   }
 
   const existingAccess = flow.accesses[0] ?? null;
 
   if (existingAccess?.status === FlowAccessStatus.APPROVED) {
-    return NextResponse.json({ ok: true, status: "APPROVED" });
+    return NextResponse.json({
+      ok: true,
+      status: "APPROVED",
+    });
   }
 
   if (flow.accessMode === FlowAccessMode.PRIVATE) {
-    return NextResponse.json({ error: "This flow is private." }, { status: 403 });
+    return NextResponse.json(
+      { error: "This flow is private." },
+      { status: 403 },
+    );
   }
 
   const latestTerms = flow.termsVersions[0] ?? null;
 
   if (flow.accessMode === FlowAccessMode.OPEN) {
+    const now = new Date();
+
     await prisma.$transaction([
       prisma.flowAccess.upsert({
         where: {
@@ -229,12 +350,12 @@ export async function POST(request: Request) {
           flowId: flow.id,
           termsVersionId: latestTerms?.id ?? null,
           status: FlowAccessStatus.APPROVED,
-          approvedAt: new Date(),
+          approvedAt: now,
         },
         update: {
           termsVersionId: latestTerms?.id ?? null,
           status: FlowAccessStatus.APPROVED,
-          approvedAt: new Date(),
+          approvedAt: now,
           rejectedAt: null,
           revokedAt: null,
         },
@@ -250,16 +371,19 @@ export async function POST(request: Request) {
           userId: user.id,
           flowId: flow.id,
           status: RequestStatus.APPROVED,
-          processedAt: new Date(),
+          processedAt: now,
         },
         update: {
           status: RequestStatus.APPROVED,
-          processedAt: new Date(),
+          processedAt: now,
         },
       }),
     ]);
 
-    return NextResponse.json({ ok: true, status: "APPROVED" });
+    return NextResponse.json({
+      ok: true,
+      status: "APPROVED",
+    });
   }
 
   await prisma.$transaction([
@@ -302,5 +426,8 @@ export async function POST(request: Request) {
     }),
   ]);
 
-  return NextResponse.json({ ok: true, status: "PENDING" });
+  return NextResponse.json({
+    ok: true,
+    status: "PENDING",
+  });
 }

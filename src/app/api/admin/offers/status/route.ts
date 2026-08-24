@@ -1,23 +1,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
+import { requireAdminStepUp } from "@/lib/api-guards";
 
 export async function POST(req: Request) {
-  const session = await auth();
-  const role = (session?.user as any)?.role;
-  if (!session?.user || role !== "ADMIN") {
-    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  }
+  const { res } = await requireAdminStepUp();
+  if (res) return res;
 
-  const { id, status } = await req.json().catch(()=>({}));
-  if (!id || !["ACTIVE","ARCHIVED","PAUSED"].includes(status)) {
+  const { id, status } = await req.json().catch(() => ({}));
+
+  if (!id || !["ACTIVE", "ARCHIVED", "PAUSED"].includes(status)) {
     return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 });
   }
 
   try {
     await prisma.offer.update({ where: { id }, data: { status } });
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.code || "DB_ERROR" }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error?.code || "DB_ERROR" },
+      { status: 400 },
+    );
   }
 }

@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireAdminStepUp } from "@/lib/api-guards";
 
-export async function POST(_req: Request, props: { params: Promise<{ id: string }> }) {
+export async function POST(
+  _req: Request,
+  props: { params: Promise<{ id: string }> },
+) {
   const params = await props.params;
-  const session = await auth();
-  if (!session?.user || (session.user as any).role !== "ADMIN") {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const { res } = await requireAdminStepUp();
+  if (res) return res;
 
   const id = params.id;
-  if (!id) return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+  if (!id) {
+    return NextResponse.json({ error: "MISSING_ID" }, { status: 400 });
+  }
 
   const offer = await prisma.offer.update({
     where: { id },

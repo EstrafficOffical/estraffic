@@ -28,14 +28,45 @@ function numberOrNull(value: unknown) {
 
 export async function GET() {
   const rawSession = await getServerSession(authOptions);
-  const session = rawSession as { user?: { role?: string | null } } | null;
+  const session = rawSession as { user?: { id?: string | null; role?: string | null } } | null;
   const role = staffRole(session);
 
   if (!role) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
   }
 
+  let managerAffiliateIds: string[] | null = null;
+
+  if (role === "MANAGER") {
+    const managerId = String(session?.user?.id || "");
+
+    if (!managerId) {
+      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
+    }
+
+    const managedAffiliates = await prisma.user.findMany({
+      where: {
+        role: "USER",
+        assignedManagerId: managerId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    managerAffiliateIds = managedAffiliates.map(
+      (affiliate) => affiliate.id,
+    );
+  }
   const conversions = await prisma.nexusConversion.findMany({
+    where:
+      role === "MANAGER"
+        ? {
+            userId: {
+              in: managerAffiliateIds || [],
+            },
+          }
+        : undefined,
     orderBy: { createdAt: "desc" },
     take: 500,
     select: {

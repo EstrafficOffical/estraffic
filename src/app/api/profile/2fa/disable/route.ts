@@ -129,18 +129,27 @@ export async function POST(req: Request) {
     );
   }
 
-  await prisma.nexusTwoFactor.update({
-    where: { userId },
-    data: {
-      enabled: false,
-      secretEnc: null,
-      pendingSecretEnc: null,
-      setupExpiresAt: null,
-      recoveryHashes: [],
-      confirmedAt: null,
-      lastUsedAt: null,
-    },
-  });
+  await prisma.$transaction([
+    prisma.nexusTwoFactor.update({
+      where: { userId },
+      data: {
+        enabled: false,
+        secretEnc: null,
+        pendingSecretEnc: null,
+        setupExpiresAt: null,
+        recoveryHashes: [],
+        confirmedAt: null,
+        lastUsedAt: null,
+      },
+    }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { authVersion: { increment: 1 } },
+    }),
+    prisma.nexusLoginChallenge.deleteMany({
+      where: { userId },
+    }),
+  ]);
 
   return NextResponse.json(
     {

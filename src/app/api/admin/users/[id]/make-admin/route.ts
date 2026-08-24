@@ -70,6 +70,7 @@ export async function POST(_req: Request, props: { params: Promise<{ id: string 
     data: {
       role: "ADMIN",
       status: "APPROVED",
+      authVersion: { increment: 1 },
     },
   });
 

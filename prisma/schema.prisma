@@ -111,6 +111,7 @@ model User {
   role              Role       @default(USER)
   status            UserStatus @default(PENDING)
   tier              Int        @default(3)
+  authVersion       Int        @default(0)
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
   telegram          String?    @db.VarChar(191)

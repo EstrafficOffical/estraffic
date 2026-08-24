@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireAdminStepUp } from "@/lib/api-guards";
 
 type StaffRole = "OWNER" | "ADMIN" | "MANAGER";
 
@@ -158,6 +159,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const writeGuard = await requireAdminStepUp();
+  if (writeGuard.res) return writeGuard.res;
+
   const auth = await requireStaff(true);
   if ("error" in auth) return auth.error;
 
@@ -346,6 +350,484 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    if (action === "archiveFlow") {
+      const flowId = text(body.flowId);
+
+      if (!flowId) {
+        return NextResponse.json(
+          {
+            error:
+              "flowId is required",
+          },
+          {
+            status: 400,
+          },
+        );
+      }
+
+      const existing =
+        await prisma.flow.findUnique({
+          where: {
+            id: flowId,
+          },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            market: {
+              select: {
+                geo: true,
+                brand: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+      if (!existing) {
+        return NextResponse.json(
+          {
+            error:
+              "FLOW_NOT_FOUND",
+          },
+          {
+            status: 404,
+          },
+        );
+      }
+
+      const actorId = String(
+        (writeGuard.session!.user as any)
+          ?.id || "",
+      );
+
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.flow.update({
+            where: {
+              id: flowId,
+            },
+            data: {
+              status:
+                FlowStatus.ARCHIVED,
+            },
+          });
+
+          await tx.nexusSecurityEvent.create({
+            data: {
+              eventType:
+                "FLOW_ARCHIVED",
+              userId:
+                actorId || null,
+              metadata: {
+                flowId,
+                objectLabel: `${existing.market.brand.name} / ${existing.market.geo} / ${existing.name}`,
+                brand:
+                  existing.market.brand
+                    .name,
+                geo:
+                  existing.market.geo,
+                flow:
+                  existing.name,
+                previousStatus:
+                  existing.status,
+              },
+            },
+          });
+        },
+      );
+
+      return NextResponse.json({
+        ok: true,
+      });
+    }
+
+    if (action === "deleteFlow") {
+      const flowId = text(body.flowId);
+
+      if (!flowId) {
+        return NextResponse.json(
+          {
+            error:
+              "flowId is required",
+          },
+          {
+            status: 400,
+          },
+        );
+      }
+
+      const result =
+        await prisma.$transaction(
+          async (tx) => {
+            const flow =
+              await tx.flow.findUnique({
+                where: {
+                  id: flowId,
+                },
+                select: {
+                  id: true,
+                  name: true,
+                  market: {
+                    select: {
+                      geo: true,
+                      brand: {
+                        select: {
+                          name: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              });
+
+            if (!flow) {
+              return {
+                kind:
+                  "missing" as const,
+              };
+            }
+
+            const [
+              clicks,
+              conversions,
+              earnings,
+              approvedAccesses,
+              trackingLinks,
+            ] =
+              await Promise.all([
+                tx.nexusClick.count({
+                  where: {
+                    flowId,
+                  },
+                }),
+
+                tx.nexusConversion.count({
+                  where: {
+                    flowId,
+                  },
+                }),
+
+                tx.nexusEarning.count({
+                  where: {
+                    flowId,
+                  },
+                }),
+
+                tx.flowAccess.count({
+                  where: {
+                    flowId,
+                    status:
+                      "APPROVED",
+                  },
+                }),
+
+                tx.nexusTrackingLink.count({
+                  where: {
+                    flowId,
+                  },
+                }),
+              ]);
+
+            if (
+              clicks > 0 ||
+              conversions > 0 ||
+              earnings > 0 ||
+              approvedAccesses > 0
+            ) {
+              return {
+                kind:
+                  "blocked" as const,
+                clicks,
+                conversions,
+                earnings,
+                approvedAccesses,
+                trackingLinks,
+              };
+            }
+
+            if (
+              trackingLinks > 0
+            ) {
+              await tx.nexusTrackingLink.deleteMany({
+                where: {
+                  flowId,
+                },
+              });
+            }
+
+            await tx.flow.delete({
+              where: {
+                id: flowId,
+              },
+            });
+
+            const actorId = String(
+              (writeGuard.session!.user as any)
+                ?.id || "",
+            );
+
+            await tx.nexusSecurityEvent.create({
+              data: {
+                eventType:
+                  "FLOW_DELETED",
+                userId:
+                  actorId || null,
+                metadata: {
+                  flowId,
+                  objectLabel: `${flow.market.brand.name} / ${flow.market.geo} / ${flow.name}`,
+                  brand:
+                    flow.market.brand
+                      .name,
+                  geo:
+                    flow.market.geo,
+                  flow:
+                    flow.name,
+                  removedUnusedTrackingLinks:
+                    trackingLinks,
+                },
+              },
+            });
+
+            return {
+              kind:
+                "deleted" as const,
+            };
+          },
+        );
+
+      if (
+        result.kind ===
+        "missing"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "FLOW_NOT_FOUND",
+          },
+          {
+            status: 404,
+          },
+        );
+      }
+
+      if (
+        result.kind ===
+        "blocked"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "FLOW_HAS_HISTORY",
+            message:
+              "This flow has traffic, conversions, earnings or approved affiliate access. Archive it instead so historical attribution stays intact.",
+            dependencies: {
+              clicks:
+                result.clicks,
+              conversions:
+                result.conversions,
+              earnings:
+                result.earnings,
+              approvedAccesses:
+                result.approvedAccesses,
+            },
+          },
+          {
+            status: 409,
+          },
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+      });
+    }
+    if (action === "deleteMarket") {
+      const marketId = text(body.marketId);
+
+      if (!marketId) {
+        return NextResponse.json(
+          { error: "marketId is required" },
+          { status: 400 },
+        );
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const market = await tx.market.findUnique({
+          where: { id: marketId },
+          select: {
+            id: true,
+            geo: true,
+            name: true,
+            brand: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        });
+
+        if (!market) {
+          return { kind: "missing" as const };
+        }
+
+        const flowCount = await tx.flow.count({
+          where: { marketId },
+        });
+
+        if (flowCount > 0) {
+          return {
+            kind: "blocked" as const,
+            flowCount,
+          };
+        }
+
+        await tx.market.delete({
+          where: { id: marketId },
+        });
+
+        const actorId = String(
+          (writeGuard.session!.user as any)?.id || "",
+        );
+
+        await tx.nexusSecurityEvent.create({
+          data: {
+            eventType: "MARKET_DELETED",
+            userId: actorId || null,
+            metadata: {
+              marketId,
+              brandId: market.brand.id,
+              brand: market.brand.name,
+              geo: market.geo,
+              objectLabel: `${market.brand.name} / ${market.geo}`,
+            },
+          },
+        });
+
+        return { kind: "deleted" as const };
+      });
+
+      if (result.kind === "missing") {
+        return NextResponse.json(
+          { error: "MARKET_NOT_FOUND" },
+          { status: 404 },
+        );
+      }
+
+      if (result.kind === "blocked") {
+        return NextResponse.json(
+          {
+            error: "MARKET_HAS_FLOWS",
+            message: `This GEO still contains ${result.flowCount} flow(s). Delete unused flows or archive historical flows first.`,
+          },
+          { status: 409 },
+        );
+      }
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === "deleteBrand") {
+      const brandId = text(body.brandId);
+
+      if (!brandId) {
+        return NextResponse.json(
+          { error: "brandId is required" },
+          { status: 400 },
+        );
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const brand = await tx.brand.findUnique({
+          where: { id: brandId },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            _count: {
+              select: {
+                markets: true,
+              },
+            },
+          },
+        });
+
+        if (!brand) {
+          return { kind: "missing" as const };
+        }
+
+        const flowCount = await tx.flow.count({
+          where: {
+            market: {
+              brandId,
+            },
+          },
+        });
+
+        if (flowCount > 0) {
+          return {
+            kind: "blocked" as const,
+            flowCount,
+            marketCount: brand._count.markets,
+          };
+        }
+
+        const marketCount = brand._count.markets;
+
+        await tx.brand.delete({
+          where: { id: brandId },
+        });
+
+        const actorId = String(
+          (writeGuard.session!.user as any)?.id || "",
+        );
+
+        await tx.nexusSecurityEvent.create({
+          data: {
+            eventType: "BRAND_DELETED",
+            userId: actorId || null,
+            metadata: {
+              brandId,
+              brand: brand.name,
+              slug: brand.slug,
+              objectLabel: brand.name,
+              removedEmptyMarkets: marketCount,
+            },
+          },
+        });
+
+        return {
+          kind: "deleted" as const,
+          marketCount,
+        };
+      });
+
+      if (result.kind === "missing") {
+        return NextResponse.json(
+          { error: "BRAND_NOT_FOUND" },
+          { status: 404 },
+        );
+      }
+
+      if (result.kind === "blocked") {
+        return NextResponse.json(
+          {
+            error: "BRAND_HAS_FLOWS",
+            message: `This brand still contains ${result.flowCount} flow(s). Delete unused flows or archive historical flows first.`,
+          },
+          { status: 409 },
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        removedEmptyMarkets: result.marketCount,
+      });
+    }
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
     console.error("NEXUS admin offers mutation failed", error);

@@ -13,6 +13,15 @@ type Props = {
   disabled?: boolean;
 };
 
+function redirectToStepUp() {
+  const locale = window.location.pathname.split("/")[1] || "en";
+  window.location.assign(
+    `/${locale}/security/step-up?callbackUrl=${encodeURIComponent(
+      window.location.pathname,
+    )}`,
+  );
+}
+
 export default function RowActions({
   id,
   title,
@@ -23,28 +32,52 @@ export default function RowActions({
   onDeleted,
   disabled,
 }: Props) {
-  const [busy, setBusy] = useState<"hide" | "archive" | "delete" | null>(null);
-  const lock = disabled || !!busy;
+  const [busy, setBusy] = useState<
+    "hide" | "archive" | "delete" | null
+  >(null);
+
+  const lock = disabled || Boolean(busy);
 
   async function call(url: string, init?: RequestInit) {
-    const r = await fetch(url, init);
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || j?.error) throw new Error(j?.error || "Failed");
-    return j;
+    const response = await fetch(url, init);
+    const json = await response.json().catch(() => ({}));
+
+    if (
+      response.status === 428 &&
+      json?.error === "STEP_UP_REQUIRED"
+    ) {
+      redirectToStepUp();
+      throw new Error("STEP_UP_REQUIRED");
+    }
+
+    if (!response.ok || json?.error) {
+      throw new Error(
+        json?.message || json?.error || "Request failed",
+      );
+    }
+
+    return json;
   }
 
   async function toggleHidden() {
     if (lock) return;
     setBusy("hide");
+
     try {
-      const j = await call("/api/admin/offers/hide", {
+      const json = await call("/api/admin/offers/hide", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerId: id, hidden: !hidden }),
+        body: JSON.stringify({
+          offerId: id,
+          hidden: !hidden,
+        }),
       });
-      onToggledHidden?.(j?.offer?.hidden ?? !hidden);
-    } catch (e) {
-      alert((e as any)?.message || "Не удалось изменить видимость");
+
+      onToggledHidden?.(json?.offer?.hidden ?? !hidden);
+    } catch (error: any) {
+      if (error?.message !== "STEP_UP_REQUIRED") {
+        alert(error?.message || "Could not change offer visibility.");
+      }
     } finally {
       setBusy(null);
     }
@@ -52,13 +85,19 @@ export default function RowActions({
 
   async function archiveOffer() {
     if (lock) return;
-    if (!confirm(`Перевести оффер «${title}» в архив?`)) return;
+
+    if (!confirm(`Archive "${title}"?`)) return;
     setBusy("archive");
+
     try {
-      await call(`/api/admin/offers/${id}/archive`, { method: "POST" });
+      await call(`/api/admin/offers/${id}/archive`, {
+        method: "POST",
+      });
       onArchived?.();
-    } catch (e) {
-      alert((e as any)?.message || "Не удалось архивировать оффер");
+    } catch (error: any) {
+      if (error?.message !== "STEP_UP_REQUIRED") {
+        alert(error?.message || "Could not archive this offer.");
+      }
     } finally {
       setBusy(null);
     }
@@ -66,40 +105,50 @@ export default function RowActions({
 
   async function deleteOffer() {
     if (lock) return;
-    const msg =
-      `Удалить оффер «${title}» безвозвратно?\n\n` +
-      `❗ Будет удалена только карточка оффера.\n` +
-      `Если есть клики/конверсии — удаление запрещено (используйте «Архив»).`;
-    if (!confirm(msg)) return;
 
+    const message =
+      `Delete "${title}" permanently?\n\n` +
+      "Deletion is only allowed when the offer has no clicks or conversions. " +
+      "Use Archive for offers with history.";
+
+    if (!confirm(message)) return;
     setBusy("delete");
+
     try {
-      await call(`/api/admin/offers/${id}`, { method: "DELETE" });
+      await call(`/api/admin/offers/${id}`, {
+        method: "DELETE",
+      });
       onDeleted?.();
-    } catch (e) {
-      alert((e as any)?.message || "Не удалось удалить оффер");
+    } catch (error: any) {
+      if (error?.message !== "STEP_UP_REQUIRED") {
+        alert(error?.message || "Could not delete this offer.");
+      }
     } finally {
       setBusy(null);
     }
   }
 
-  const btn = (
+  const button = (
     label: string,
     onClick: () => void,
-    variant: "ghost" | "warn" | "danger" | "blue" = "ghost"
+    variant: "ghost" | "warn" | "danger" | "blue" = "ghost",
   ) => {
-    const map: Record<typeof variant, string> = {
+    const styles: Record<typeof variant, string> = {
       ghost: "bg-white/10 border-white/15 hover:bg-white/15",
-      warn: "bg-amber-400/15 border-amber-400/30 text-amber-100 hover:bg-amber-400/20",
-      danger: "bg-rose-400/15 border-rose-400/30 text-rose-100 hover:bg-rose-400/20",
-      blue: "bg-sky-400/15 border-sky-400/30 text-sky-100 hover:bg-sky-400/20",
-    } as const;
+      warn:
+        "bg-amber-400/15 border-amber-400/30 text-amber-100 hover:bg-amber-400/20",
+      danger:
+        "bg-rose-400/15 border-rose-400/30 text-rose-100 hover:bg-rose-400/20",
+      blue:
+        "bg-sky-400/15 border-sky-400/30 text-sky-100 hover:bg-sky-400/20",
+    };
 
     return (
       <button
+        type="button"
         onClick={onClick}
         disabled={lock}
-        className={`rounded-xl px-3 py-1.5 border text-sm ${map[variant]} disabled:opacity-50`}
+        className={`rounded-xl border px-3 py-1.5 text-sm ${styles[variant]} disabled:opacity-50`}
       >
         {label}
       </button>
@@ -107,12 +156,12 @@ export default function RowActions({
   };
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {btn("Edit", () => onEdit?.(), "blue")}
-      {btn(hidden ? "Показать" : "Скрыть", toggleHidden)}
-      {btn("Архив", archiveOffer, "warn")}
-      {btn("Удалить", deleteOffer, "danger")}
-      {busy && <span className="text-xs text-white/60">…</span>}
+    <div className="flex flex-wrap items-center gap-2">
+      {button("Edit", () => onEdit?.(), "blue")}
+      {button(hidden ? "Show" : "Hide", toggleHidden)}
+      {button("Archive", archiveOffer, "warn")}
+      {button("Delete", deleteOffer, "danger")}
+      {busy && <span className="text-xs text-white/60">Saving...</span>}
     </div>
   );
 }
