@@ -13,8 +13,8 @@ export const metadata = {
   title: "NEXUS ALLIANCE",
   description: "Private performance partnership network",
   icons: {
-    icon: [{ url: "/icon.png" }],
-    apple: [{ url: "/apple-icon.png" }],
+    icon: [{ url: "/nexus-favicon.png?v=20260825" }],
+    apple: [{ url: "/nexus-apple-icon.png?v=20260825" }],
   },
 };
 

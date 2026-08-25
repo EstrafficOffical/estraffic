@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import {
   ArrowRight,
@@ -95,10 +96,16 @@ function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-3">
       <div
-        className={`${compact ? "h-8 w-8" : "h-9 w-9"} relative grid shrink-0 place-items-center rounded-xl border border-[#7657ff]/40 bg-[#7657ff]/10`}
+        className={`${compact ? "h-8 w-8" : "h-9 w-9"} relative shrink-0 overflow-hidden rounded-xl border border-[#7657ff]/35 shadow-[0_8px_30px_-12px_rgba(118,87,255,0.8)]`}
       >
-        <span className={`${compact ? "text-[13px]" : "text-[15px]"} font-bold tracking-tight text-[#8b72ff]`}>N</span>
-        <span className="absolute inset-0 rounded-xl shadow-[0_8px_30px_-12px_rgba(118,87,255,0.8)]" />
+        <Image
+          src="/brand/nexus-logo.png"
+          alt="NEXUS ALLIANCE"
+          fill
+          sizes={compact ? "32px" : "36px"}
+          className="object-cover"
+          priority
+        />
       </div>
       <div className="leading-none">
         <div className="text-[13px] font-semibold tracking-[0.2em] text-[#f7f7f8]">NEXUS</div>

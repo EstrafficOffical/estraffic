@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -89,7 +90,7 @@ export default function NexusAppShell({ children, locale, user }: Props) {
     <div className="flex h-full flex-col bg-[#0b0b0e] text-white">
       <div className="flex h-16 items-center border-b border-white/[0.07] px-5">
         <Link href={`/${locale}`} className="flex items-center gap-3" onClick={() => setMobileOpen(false)}>
-          <span className="grid h-8 w-8 place-items-center rounded-[10px] border border-[#7657ff]/45 bg-[#7657ff]/10 text-[13px] font-bold text-[#8b73ff] shadow-[0_0_24px_rgba(118,87,255,.12)]">N</span>
+          <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-[10px] border border-[#7657ff]/35 shadow-[0_0_24px_rgba(118,87,255,.16)]"><Image src="/brand/nexus-logo.png" alt="NEXUS ALLIANCE" fill sizes="32px" className="object-cover" priority /></span>
           <span className="leading-none">
             <span className="block text-[13px] font-semibold tracking-[0.18em]">NEXUS</span>
             <span className="mt-1 block text-[10px] font-medium tracking-[0.3em] text-white/40">ALLIANCE</span>
